@@ -19,4 +19,20 @@ describe("recommendations", () => {
     expect(variations.every((variation) => variation.notes.length >= 1)).toBe(true);
     expect(variations.every((variation) => variation.notes.length <= 4)).toBe(true);
   });
+
+  it("normalizes flat root aliases for voicing variations", () => {
+    const variations = getVoicingVariations("C", "Bbm7");
+    expect(variations[0].notes).toEqual([70, 73, 77, 80]);
+  });
+
+  it("throws a clear error for malformed chord roots", () => {
+    expect(() => getVoicingVariations("C", "H7")).toThrow(
+      'Unsupported chord root in "H7". Expected A-G with optional # or b accidental.'
+    );
+  });
+
+  it("normalizes sharp root aliases for voicing variations", () => {
+    const variations = getVoicingVariations("C", "E#maj7");
+    expect(variations[0].notes).toEqual([65, 69, 72, 76]);
+  });
 });

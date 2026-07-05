@@ -21,6 +21,23 @@ const recommendationDegrees = [
   { degree: 6, suffix: "7", reason: "Secondary dominant color" }
 ];
 
+const rootAliases: Record<string, KeyName> = {
+  Cb: "B",
+  "C#": "C#",
+  Db: "C#",
+  "D#": "D#",
+  Eb: "D#",
+  "E#": "F",
+  Fb: "E",
+  "F#": "F#",
+  Gb: "F#",
+  "G#": "G#",
+  Ab: "G#",
+  "A#": "A#",
+  Bb: "A#",
+  "B#": "C"
+};
+
 export function getRecommendedChordNames(
   key: KeyName,
   currentChordName: string
@@ -33,7 +50,8 @@ export function getRecommendedChordNames(
 }
 
 export function getVoicingVariations(key: KeyName, chordName: string): VoicingVariation[] {
-  const root = chordRootMidi(key, chordName);
+  void key;
+  const root = chordRootMidi(chordName);
   const quality = chordQuality(chordName);
   const tones =
     quality === "dominant" ? [0, 4, 7, 10] : quality === "minor" ? [0, 3, 7, 10] : [0, 4, 7, 11];
@@ -60,11 +78,30 @@ function degreeName(key: KeyName, degree: number): KeyName {
   return chromaticKeys[(rootIndex + semitone) % chromaticKeys.length];
 }
 
-function chordRootMidi(key: KeyName, chordName: string): number {
-  const rootMatch = chordName.match(/^[A-G]#?/);
-  const rootName = (rootMatch?.[0] ?? key) as KeyName;
+function chordRootMidi(chordName: string): number {
+  const rootName = parseChordRoot(chordName);
   const rootIndex = chromaticKeys.indexOf(rootName);
   return 60 + rootIndex;
+}
+
+function parseChordRoot(chordName: string): KeyName {
+  const rootMatch = chordName.match(/^([A-G](?:#|b)?)(?![#b])/);
+  if (!rootMatch) {
+    throw new Error(
+      `Unsupported chord root in "${chordName}". Expected A-G with optional # or b accidental.`
+    );
+  }
+
+  const rootToken = rootMatch[1];
+  if (isKeyName(rootToken)) {
+    return rootToken;
+  }
+
+  return rootAliases[rootToken];
+}
+
+function isKeyName(rootToken: string): rootToken is KeyName {
+  return chromaticKeys.includes(rootToken as KeyName);
 }
 
 function chordQuality(chordName: string): "major" | "minor" | "dominant" {
