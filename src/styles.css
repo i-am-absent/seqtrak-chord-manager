@@ -308,13 +308,13 @@ button.slot-card:hover {
     grid-template-columns: 1fr;
   }
 
-}
-
-@media (max-width: 460px) {
   .chord-grid {
     grid-template-columns: repeat(4, 86px);
   }
 
+}
+
+@media (max-width: 460px) {
   .header-actions button,
   .device-status {
     width: 100%;
