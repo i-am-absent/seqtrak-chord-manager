@@ -8,6 +8,7 @@ import {
 } from "./seqtrakSysex";
 import { MockMidiInput, MockMidiOutput } from "./mockMidi";
 import { SeqtrakClient } from "./seqtrakClient";
+import type { MidiOutputLike } from "./midiTypes";
 
 describe("SeqtrakClient", () => {
   it("reads current scale by sending a parameter request", async () => {
@@ -85,6 +86,22 @@ describe("SeqtrakClient", () => {
     );
   });
 
+  it("rejects invalid packs before sending any chord parameters", async () => {
+    const output = new MockMidiOutput();
+    const client = new SeqtrakClient(new MockMidiInput(), output);
+    const invalid = {
+      ...createDefaultPack(),
+      chords: createDefaultPack().chords.map((chord) =>
+        chord.slotIndex === 7 ? { ...chord, notes: [20] } : chord
+      )
+    };
+
+    await expect(client.writeChordPack({ trackIndex: 7, scale: 0, pack: invalid })).rejects.toThrow(
+      "Note 20 is outside the 88-key range."
+    );
+    expect(output.sentMessages).toHaveLength(0);
+  });
+
   it("times out and cleans up listeners when a requested parameter never responds", async () => {
     vi.useFakeTimers();
     try {
@@ -101,6 +118,21 @@ describe("SeqtrakClient", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("cleans up listeners when sending a request throws", async () => {
+    const input = new MockMidiInput();
+    const output: MidiOutputLike = {
+      id: "throwing-output",
+      name: "Throwing Output",
+      send: () => {
+        throw new Error("MIDI output failed.");
+      }
+    };
+    const client = new SeqtrakClient(input, output);
+
+    await expect(client.readCurrentScale()).rejects.toThrow("MIDI output failed.");
+    expect(input.listenerCount).toBe(0);
   });
 
   it("ignores unmatched parameter change responses while waiting for the requested address", async () => {

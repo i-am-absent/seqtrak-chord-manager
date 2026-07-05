@@ -1,24 +1,13 @@
-interface MidiMessageEventLike {
-  data: Uint8Array;
-}
+import type { MidiInputLike, MidiOutputLike } from "./midiTypes";
 
-interface MidiInputLike {
-  id: string;
-  name: string;
-  addEventListener(type: "midimessage", listener: (event: MidiMessageEventLike) => void): void;
-  removeEventListener(type: "midimessage", listener: (event: MidiMessageEventLike) => void): void;
-}
-
-interface MidiOutputLike {
-  id: string;
-  name: string;
-  send(data: number[] | Uint8Array): void;
+interface MidiPortCollectionLike<T> {
+  values(): IterableIterator<T>;
 }
 
 interface NavigatorMidiLike {
   requestMIDIAccess?: (options: { sysex: boolean }) => Promise<{
-    inputs: Map<string, MidiInputLike>;
-    outputs: Map<string, MidiOutputLike>;
+    inputs: MidiPortCollectionLike<MidiInputLike>;
+    outputs: MidiPortCollectionLike<MidiOutputLike>;
   }>;
 }
 

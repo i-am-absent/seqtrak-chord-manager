@@ -1,6 +1,7 @@
 import {
   createDefaultPack,
   midiNoteName,
+  validatePack,
   type ChordPack,
   type ChordSlot,
   type SeqtrakTrackIndex
@@ -105,11 +106,23 @@ export class SeqtrakClient {
   }
 
   async writeChordPack(input: WriteChordPackInput): Promise<void> {
+    const validationErrors = validatePack(input.pack);
+
+    if (validationErrors.length > 0) {
+      throw new Error(validationErrors[0]);
+    }
+
+    const messages = [];
+
     for (let slotIndex = 1; slotIndex <= CHORD_SLOT_COUNT; slotIndex += 1) {
       const chord = input.pack.chords.find((candidate) => candidate.slotIndex === slotIndex);
 
+      if (!chord) {
+        throw new Error(`Slot ${slotIndex} does not exist in this pack.`);
+      }
+
       for (let noteIndex = 0; noteIndex < NOTES_PER_SLOT; noteIndex += 1) {
-        this.output.send(
+        messages.push(
           encodeParameterChange(
             encodeTrackChordAddress({
               trackIndex: input.trackIndex,
@@ -121,6 +134,10 @@ export class SeqtrakClient {
           )
         );
       }
+    }
+
+    for (const message of messages) {
+      this.output.send(message);
     }
   }
 
@@ -148,7 +165,13 @@ export class SeqtrakClient {
       };
 
       this.input.addEventListener("midimessage", listener);
-      this.output.send(encodeParameterRequest(address));
+
+      try {
+        this.output.send(encodeParameterRequest(address));
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
     });
   }
 }
