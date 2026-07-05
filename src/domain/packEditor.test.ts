@@ -44,6 +44,15 @@ describe("pack editor reducer", () => {
     expect(blockedFifth.message).toBe("A SEQTRAK chord can contain up to four notes.");
   });
 
+  it("rejects invalid toggled notes", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const next = editorReducer(state, { type: "toggleNote", note: 109 });
+
+    expect(next.pack).toBe(state.pack);
+    expect(next.message).toBe("Note 109 is outside the 88-key range.");
+  });
+
   it("does not allow removing the final remaining note", () => {
     const pack = createDefaultPack();
     pack.chords[0] = { ...pack.chords[0], notes: [60] };

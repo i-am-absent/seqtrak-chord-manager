@@ -30,7 +30,7 @@ describe("RecommendationPanel", () => {
     );
 
     expect(screen.getByRole("button", { name: /^Em7/ })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^1close/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply variation 1 close" }));
     expect(onApply).toHaveBeenCalledWith(expect.anything(), "Em7");
   });
 });

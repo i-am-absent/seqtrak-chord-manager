@@ -70,6 +70,7 @@ export function RecommendationPanel({
           <button
             className="variation"
             key={variation.variation}
+            aria-label={`Apply variation ${variation.variation} ${variation.label}`}
             onClick={() => {
               onPreview(variation.notes);
               onApply(variation, activeChordName);

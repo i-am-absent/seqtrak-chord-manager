@@ -75,6 +75,14 @@ function toggleNote(state: EditorState, note: number): EditorState {
     };
   }
 
+  const validationErrors = validateChordNotes(nextNotes);
+  if (validationErrors.length > 0) {
+    return {
+      ...state,
+      message: validationErrors[0]
+    };
+  }
+
   return {
     ...state,
     pack: updateSelectedChord(state, nextNotes, selected.displayName),
