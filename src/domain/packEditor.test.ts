@@ -17,6 +17,25 @@ describe("pack editor reducer", () => {
     expect(withHighC.pack.chords[0].notes).toEqual([64, 67, 72]);
   });
 
+  it("toggles the selected slot when chords are reordered", () => {
+    const pack = createDefaultPack();
+    pack.chords = [
+      pack.chords[3],
+      pack.chords[0],
+      pack.chords[1],
+      pack.chords[2],
+      pack.chords[4],
+      pack.chords[5],
+      pack.chords[6]
+    ];
+    const state = editorReducer(createEditorState(pack), { type: "selectSlot", slotIndex: 4 });
+
+    const next = editorReducer(state, { type: "toggleNote", note: 65 });
+
+    expect(next.pack.chords.find((chord) => chord.slotIndex === 4)?.notes).toEqual([69, 72]);
+    expect(next.pack.chords.find((chord) => chord.slotIndex === 3)?.notes).toEqual([64, 67, 71]);
+  });
+
   it("does not allow more than four notes", () => {
     const state = createEditorState(createDefaultPack());
     const withFourth = editorReducer(state, { type: "toggleNote", note: 72 });

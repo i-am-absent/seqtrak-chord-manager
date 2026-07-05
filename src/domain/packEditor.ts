@@ -1,4 +1,4 @@
-import type { ChordPack, KeyName } from "./music";
+import type { ChordPack, ChordSlot, KeyName } from "./music";
 
 export interface EditorState {
   pack: ChordPack;
@@ -47,7 +47,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 }
 
 function toggleNote(state: EditorState, note: number): EditorState {
-  const selected = state.pack.chords[state.selectedSlotIndex - 1];
+  const selected = getSelectedChord(state);
   const hasNote = selected.notes.includes(note);
   const nextNotes = hasNote
     ? selected.notes.filter((candidate) => candidate !== note)
@@ -72,6 +72,16 @@ function toggleNote(state: EditorState, note: number): EditorState {
     pack: updateSelectedChord(state, nextNotes, selected.displayName),
     message: ""
   };
+}
+
+function getSelectedChord(state: EditorState): ChordSlot {
+  const selected = state.pack.chords.find((chord) => chord.slotIndex === state.selectedSlotIndex);
+
+  if (!selected) {
+    throw new Error(`Selected slot ${state.selectedSlotIndex} does not exist in this pack.`);
+  }
+
+  return selected;
 }
 
 function updateSelectedChord(state: EditorState, notes: number[], displayName: string): ChordPack {
