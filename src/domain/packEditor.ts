@@ -1,4 +1,5 @@
 import type { ChordPack, ChordSlot, KeyName } from "./music";
+import { validateChordNotes } from "./music";
 
 export interface EditorState {
   pack: ChordPack;
@@ -28,7 +29,7 @@ export function createEditorState(pack: ChordPack): EditorState {
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "selectSlot":
-      return { ...state, selectedSlotIndex: action.slotIndex, message: "" };
+      return selectSlot(state, action.slotIndex);
     case "toggleNote":
       return toggleNote(state, action.note);
     case "updateMetadata":
@@ -38,12 +39,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         message: ""
       };
     case "replaceSelectedChord":
-      return {
-        ...state,
-        pack: updateSelectedChord(state, action.notes, action.displayName),
-        message: ""
-      };
+      return replaceSelectedChord(state, action.notes, action.displayName);
   }
+}
+
+function selectSlot(state: EditorState, slotIndex: number): EditorState {
+  if (!hasSlot(state, slotIndex)) {
+    return {
+      ...state,
+      message: `Slot ${slotIndex} does not exist in this pack.`
+    };
+  }
+
+  return { ...state, selectedSlotIndex: slotIndex, message: "" };
 }
 
 function toggleNote(state: EditorState, note: number): EditorState {
@@ -74,6 +82,28 @@ function toggleNote(state: EditorState, note: number): EditorState {
   };
 }
 
+function replaceSelectedChord(
+  state: EditorState,
+  notes: number[],
+  displayName: string
+): EditorState {
+  const nextNotes = [...notes].sort((a, b) => a - b);
+  const validationErrors = validateChordNotes(nextNotes);
+
+  if (validationErrors.length > 0) {
+    return {
+      ...state,
+      message: validationErrors[0]
+    };
+  }
+
+  return {
+    ...state,
+    pack: updateSelectedChord(state, nextNotes, displayName),
+    message: ""
+  };
+}
+
 function getSelectedChord(state: EditorState): ChordSlot {
   const selected = state.pack.chords.find((chord) => chord.slotIndex === state.selectedSlotIndex);
 
@@ -82,6 +112,10 @@ function getSelectedChord(state: EditorState): ChordSlot {
   }
 
   return selected;
+}
+
+function hasSlot(state: EditorState, slotIndex: number): boolean {
+  return state.pack.chords.some((chord) => chord.slotIndex === slotIndex);
 }
 
 function updateSelectedChord(state: EditorState, notes: number[], displayName: string): ChordPack {

@@ -44,6 +44,53 @@ describe("pack editor reducer", () => {
     expect(blockedFifth.message).toBe("A SEQTRAK chord can contain up to four notes.");
   });
 
+  it("does not allow removing the final remaining note", () => {
+    const pack = createDefaultPack();
+    pack.chords[0] = { ...pack.chords[0], notes: [60] };
+    const state = createEditorState(pack);
+
+    const next = editorReducer(state, { type: "toggleNote", note: 60 });
+
+    expect(next.pack.chords[0].notes).toEqual([60]);
+    expect(next.message).toBe("A SEQTRAK chord must contain at least one note.");
+  });
+
+  it("replaces the selected chord with sorted notes", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const next = editorReducer(state, {
+      type: "replaceSelectedChord",
+      notes: [67, 60, 64],
+      displayName: "C sorted"
+    });
+
+    expect(next.pack.chords[0].notes).toEqual([60, 64, 67]);
+    expect(next.pack.chords[0].displayName).toBe("C sorted");
+    expect(next.message).toBe("");
+  });
+
+  it("rejects invalid replacement notes and leaves the pack unchanged", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const next = editorReducer(state, {
+      type: "replaceSelectedChord",
+      notes: [60, 60],
+      displayName: "Duplicate C"
+    });
+
+    expect(next.pack).toBe(state.pack);
+    expect(next.message).toBe("Chord notes must be unique.");
+  });
+
+  it("rejects invalid slot selection", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const next = editorReducer(state, { type: "selectSlot", slotIndex: 99 });
+
+    expect(next.selectedSlotIndex).toBe(1);
+    expect(next.message).toBe("Slot 99 does not exist in this pack.");
+  });
+
   it("updates pack metadata", () => {
     const state = createEditorState(createDefaultPack());
     const next = editorReducer(state, {
