@@ -1,13 +1,21 @@
+import "@testing-library/jest-dom/vitest";
 import { screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
 import App from "./App";
 import { renderApp } from "./test/render";
 
-test("renders the initial chord manager shell", () => {
-  renderApp(<App />);
+describe("App", () => {
+  it("renders the local editor and changes selected chord notes", async () => {
+    renderApp(<App />);
 
-  expect(screen.getByText("SEQTRAK")).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Chord Manager" })).toBeTruthy();
-  expect(screen.getByText("Browser-only mode")).toBeTruthy();
-  expect(screen.getByText("Editor loading...")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Chord Manager" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Pack metadata")).toBeInTheDocument();
+    expect(screen.getByLabelText("Chord slots")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    await userEvent.click(screen.getByRole("button", { name: "C4" }));
+
+    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("aria-pressed", "true");
+  });
 });
