@@ -79,6 +79,57 @@ select {
   padding: 7px 11px;
 }
 
+.device-panel {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, auto) minmax(180px, 240px) 1fr;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.device-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.device-panel button,
+.device-panel select {
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+  color: #1b1c1f;
+  min-height: 38px;
+  padding: 7px 11px;
+}
+
+.device-panel button {
+  cursor: pointer;
+}
+
+.device-panel button:disabled {
+  background: #f7f8fb;
+  color: #687080;
+  cursor: not-allowed;
+}
+
+.device-track-select {
+  color: #4b5565;
+  display: grid;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.device-readout {
+  color: #4b5565;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .editor-top {
   align-items: start;
   display: grid;
@@ -306,6 +357,15 @@ button.slot-card:hover {
 
   .editor-top {
     grid-template-columns: 1fr;
+  }
+
+  .device-panel {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .device-readout {
+    justify-content: flex-start;
   }
 
   .chord-grid {
