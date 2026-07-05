@@ -19,21 +19,27 @@ export function Keyboard88({
   );
 
   return (
-    <div className="keyboard-wrap" aria-label="88-key piano keyboard">
+    <div className="keyboard-wrap" role="group" aria-label="88-key piano keyboard">
+      <span id="keyboard-candidate-note" hidden>
+        Candidate note
+      </span>
       <div className="keyboard">
         {notes.map((note) => {
           const selected = activeNotes.includes(note);
           const candidate = candidateNotes.includes(note);
-          const label = `${midiNoteName(note)}${selected ? " selected" : candidate ? " candidate" : ""}`;
+          const label = midiNoteName(note);
           return (
             <button
               aria-label={label}
+              aria-pressed={selected}
+              aria-describedby={candidate ? "keyboard-candidate-note" : undefined}
               className={[
                 "piano-key",
                 isBlackKey(note) ? "black" : "white",
                 selected ? "active" : "",
                 candidate ? "candidate" : ""
               ].join(" ")}
+              data-candidate={candidate ? "true" : undefined}
               key={note}
               onClick={() => {
                 onPreviewNote(note);

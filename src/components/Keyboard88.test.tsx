@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -9,10 +10,19 @@ describe("Keyboard88", () => {
     const onToggle = vi.fn();
     const onPreview = vi.fn();
     renderApp(
-      <Keyboard88 activeNotes={[60, 64, 67]} onToggleNote={onToggle} onPreviewNote={onPreview} />
+      <Keyboard88
+        activeNotes={[60, 64, 67]}
+        candidateNotes={[62]}
+        onToggleNote={onToggle}
+        onPreviewNote={onPreview}
+      />
     );
+    expect(screen.getByRole("group", { name: "88-key piano keyboard" })).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(88);
-    await userEvent.click(screen.getByRole("button", { name: "C4 selected" }));
+    const selectedKey = screen.getByRole("button", { name: "C4" });
+    expect(selectedKey).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("data-candidate", "true");
+    await userEvent.click(selectedKey);
     expect(onPreview).toHaveBeenCalledWith(60);
     expect(onToggle).toHaveBeenCalledWith(60);
   });

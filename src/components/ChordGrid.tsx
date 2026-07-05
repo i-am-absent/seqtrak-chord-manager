@@ -8,7 +8,7 @@ interface ChordGridProps {
 
 export function ChordGrid({ pack, selectedSlotIndex, onSelectSlot }: ChordGridProps) {
   return (
-    <div className="chord-grid" aria-label="Chord slots">
+    <div className="chord-grid" role="group" aria-label="Chord slots">
       <div className="slot-card space-slot">Space</div>
       {pack.chords.map((chord) => (
         <button

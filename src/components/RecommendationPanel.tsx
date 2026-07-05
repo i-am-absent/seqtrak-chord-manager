@@ -26,7 +26,10 @@ export function RecommendationPanel({
     [effectiveKey, currentChordName]
   );
   const [selectedChordName, setSelectedChordName] = useState(chordNames[0]?.name ?? "Dm7");
-  const variations = getVoicingVariations(effectiveKey, selectedChordName);
+  const activeChordName = chordNames.some((chord) => chord.name === selectedChordName)
+    ? selectedChordName
+    : (chordNames[0]?.name ?? "Dm7");
+  const variations = getVoicingVariations(effectiveKey, activeChordName);
   const overrideKeys = chromaticKeys.filter((key) => key !== packKey);
 
   return (
@@ -51,7 +54,7 @@ export function RecommendationPanel({
       <div className="chip-row" aria-label="Recommended chord names">
         {chordNames.map((chord) => (
           <button
-            className={chord.name === selectedChordName ? "chip selected" : "chip"}
+            className={chord.name === activeChordName ? "chip selected" : "chip"}
             key={`${chord.name}-${chord.reason}`}
             onClick={() => setSelectedChordName(chord.name)}
             type="button"
@@ -69,7 +72,7 @@ export function RecommendationPanel({
             key={variation.variation}
             onClick={() => {
               onPreview(variation.notes);
-              onApply(variation, selectedChordName);
+              onApply(variation, activeChordName);
             }}
             type="button"
           >
