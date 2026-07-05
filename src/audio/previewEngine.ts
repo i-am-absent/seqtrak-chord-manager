@@ -20,7 +20,7 @@ export class NullPreviewEngine implements PreviewEngine {
 export class WebAudioPreviewEngine implements PreviewEngine {
   private context: AudioContext;
 
-  constructor(context = new AudioContext()) {
+  constructor(context: AudioContext) {
     this.context = context;
   }
 
@@ -29,6 +29,11 @@ export class WebAudioPreviewEngine implements PreviewEngine {
   }
 
   async playChord(notes: number[]): Promise<void> {
+    const playableNotes = notes.filter(Number.isFinite);
+    if (playableNotes.length === 0) {
+      return;
+    }
+
     if (this.context.state === "suspended") {
       await this.context.resume();
     }
@@ -36,7 +41,7 @@ export class WebAudioPreviewEngine implements PreviewEngine {
     const now = this.context.currentTime;
     const duration = 0.7;
 
-    for (const note of notes) {
+    for (const note of playableNotes) {
       const oscillator = this.context.createOscillator();
       const gain = this.context.createGain();
       oscillator.type = "sawtooth";
@@ -45,8 +50,20 @@ export class WebAudioPreviewEngine implements PreviewEngine {
       gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
       oscillator.connect(gain).connect(this.context.destination);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      };
       oscillator.start(now);
       oscillator.stop(now + duration);
     }
   }
+}
+
+export function createPreviewEngine(): PreviewEngine {
+  if (typeof window === "undefined" || !window.AudioContext) {
+    return new NullPreviewEngine();
+  }
+
+  return new WebAudioPreviewEngine(new window.AudioContext());
 }
