@@ -36,6 +36,7 @@ export default function App() {
   const handleConnect = useCallback(async () => {
     try {
       setDeviceStatus("busy");
+      setCurrentScale(null);
       const access = await createMidiAccessService().requestAccess();
       setMidiInputs(access.inputs);
       setMidiOutputs(access.outputs);
@@ -45,6 +46,7 @@ export default function App() {
 
       if (!input || !output) {
         clientRef.current = null;
+        setCurrentScale(null);
         setDeviceStatus("error");
         dispatch({
           type: "setMessage",
@@ -58,12 +60,19 @@ export default function App() {
       dispatch({ type: "setMessage", message: "SEQTRAK connected." });
     } catch (error) {
       clientRef.current = null;
+      setCurrentScale(null);
       setDeviceStatus(error instanceof Error && error.message.includes("Web MIDI") ? "unsupported" : "error");
       dispatch({
         type: "setMessage",
         message: error instanceof Error ? error.message : "Failed to connect SEQTRAK."
       });
     }
+  }, []);
+
+  const handleTrackChange = useCallback((trackIndex: SeqtrakTrackIndex) => {
+    setSelectedTrackIndex(trackIndex);
+    setCurrentScale(null);
+    dispatch({ type: "setMessage", message: "Select Read from SEQTRAK before writing this track." });
   }, []);
 
   const handleRead = useCallback(async () => {
@@ -82,7 +91,7 @@ export default function App() {
       });
       setDeviceStatus("connected");
     } catch (error) {
-      setDeviceStatus("error");
+      setDeviceStatus(clientRef.current ? "connected" : "error");
       dispatch({
         type: "setMessage",
         message: error instanceof Error ? error.message : "Failed to read from SEQTRAK."
@@ -116,7 +125,7 @@ export default function App() {
       });
       setDeviceStatus("connected");
     } catch (error) {
-      setDeviceStatus("error");
+      setDeviceStatus(clientRef.current ? "connected" : "error");
       dispatch({
         type: "setMessage",
         message: error instanceof Error ? error.message : "Failed to write to SEQTRAK."
@@ -140,10 +149,11 @@ export default function App() {
           outputs={midiOutputs}
           selectedTrackIndex={selectedTrackIndex}
           currentScale={currentScale}
+          canWrite={currentScale !== null}
           onConnect={handleConnect}
           onRead={handleRead}
           onWrite={handleWrite}
-          onTrackChange={setSelectedTrackIndex}
+          onTrackChange={handleTrackChange}
         />
 
         <div className="editor-top">

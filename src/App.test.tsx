@@ -110,6 +110,8 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Status: connected")).toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeDisabled();
     expect(midiMocks.createMidiAccessService).toHaveBeenCalled();
     expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledWith(
       { id: "input-1", name: "SEQTRAK Input" },
@@ -124,6 +126,7 @@ describe("App", () => {
     expect(midiMocks.readPackFromSeqtrak).toHaveBeenCalledWith(midiMocks.mockClient, 7);
     expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument();
     expect(screen.getByText("Read Warm Pad at SCALE 2.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeEnabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Write to SEQTRAK" }));
 
@@ -139,5 +142,41 @@ describe("App", () => {
         trackSoundName: "Warm Pad"
       })
     });
+  });
+
+  it("requires a fresh read before writing after the target track changes", async () => {
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => {
+      expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => {
+      expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText("Target track"), "8");
+
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeDisabled();
+    expect(screen.getByText("Select Read from SEQTRAK before writing this track.")).toBeInTheDocument();
+  });
+
+  it("keeps a connected client retryable after a read error", async () => {
+    midiMocks.readPackFromSeqtrak.mockRejectedValueOnce(new Error("Read failed."));
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => {
+      expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Read failed.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeEnabled();
   });
 });

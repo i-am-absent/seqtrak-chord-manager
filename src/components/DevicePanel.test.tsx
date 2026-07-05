@@ -38,6 +38,7 @@ describe("DevicePanel", () => {
         outputs={[midiOutput("SEQTRAK Output"), midiOutput("Loopback Output")]}
         selectedTrackIndex={7}
         currentScale={null}
+        canWrite={false}
         onConnect={onConnect}
         onRead={onRead}
         onWrite={onWrite}
@@ -65,6 +66,7 @@ describe("DevicePanel", () => {
       outputs: [],
       selectedTrackIndex: 7 as const,
       currentScale: 3,
+      canWrite: true,
       onConnect: vi.fn(),
       onRead: vi.fn(),
       onWrite: vi.fn(),
@@ -76,6 +78,12 @@ describe("DevicePanel", () => {
     expect(screen.getByText("Current SCALE: 3")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeEnabled();
+
+    rerender(<DevicePanel {...props} currentScale={null} canWrite={false} status="connected" />);
+
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeDisabled();
 
     rerender(<DevicePanel {...props} status="busy" />);
 

@@ -9,6 +9,7 @@ interface DevicePanelProps {
   outputs: MidiOutputLike[];
   selectedTrackIndex: SeqtrakTrackIndex;
   currentScale: number | null;
+  canWrite: boolean;
   onConnect: () => void;
   onRead: () => void;
   onWrite: () => void;
@@ -21,13 +22,14 @@ export function DevicePanel({
   outputs,
   selectedTrackIndex,
   currentScale,
+  canWrite,
   onConnect,
   onRead,
   onWrite,
   onTrackChange
 }: DevicePanelProps) {
   const isBusy = status === "busy";
-  const canReadWrite = status === "connected" && !isBusy;
+  const canRead = status === "connected" && !isBusy;
 
   return (
     <section className="device-panel panel" aria-label="SEQTRAK device">
@@ -35,10 +37,10 @@ export function DevicePanel({
         <button type="button" onClick={onConnect} disabled={isBusy}>
           Connect SEQTRAK
         </button>
-        <button type="button" onClick={onRead} disabled={!canReadWrite}>
+        <button type="button" onClick={onRead} disabled={!canRead}>
           Read from SEQTRAK
         </button>
-        <button type="button" onClick={onWrite} disabled={!canReadWrite}>
+        <button type="button" onClick={onWrite} disabled={!canRead || !canWrite}>
           Write to SEQTRAK
         </button>
       </div>
