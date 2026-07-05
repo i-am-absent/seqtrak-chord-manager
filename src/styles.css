@@ -128,6 +128,7 @@ select {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow-x: auto;
 }
 
 .slot-card {
@@ -310,6 +311,10 @@ button.slot-card:hover {
 }
 
 @media (max-width: 460px) {
+  .chord-grid {
+    grid-template-columns: repeat(4, 86px);
+  }
+
   .header-actions button,
   .device-status {
     width: 100%;
