@@ -1,5 +1,5 @@
-import { useMemo, useReducer } from "react";
-import { createPreviewEngine } from "./audio/previewEngine";
+import { useCallback, useReducer, useRef } from "react";
+import { createPreviewEngine, type PreviewEngine } from "./audio/previewEngine";
 import { ChordGrid } from "./components/ChordGrid";
 import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
@@ -9,7 +9,11 @@ import { createDefaultPack } from "./domain/music";
 
 export default function App() {
   const [state, dispatch] = useReducer(editorReducer, createEditorState(createDefaultPack()));
-  const previewEngine = useMemo(() => createPreviewEngine(), []);
+  const previewEngineRef = useRef<PreviewEngine | null>(null);
+  const getPreviewEngine = useCallback(() => {
+    previewEngineRef.current ??= createPreviewEngine();
+    return previewEngineRef.current;
+  }, []);
   const selectedChord = state.pack.chords.find(
     (chord) => chord.slotIndex === state.selectedSlotIndex
   );
@@ -25,7 +29,7 @@ export default function App() {
           <p className="eyebrow">SEQTRAK</p>
           <h1>Chord Manager</h1>
         </div>
-        <div className="header-actions" aria-label="Device actions">
+        <div className="header-actions" role="group" aria-label="Device actions">
           <button type="button" disabled>
             Connect SEQTRAK
           </button>
@@ -61,7 +65,7 @@ export default function App() {
         <Keyboard88
           activeNotes={selectedChord.notes}
           onPreviewNote={(note) => {
-            void previewEngine.playNote(note);
+            void getPreviewEngine().playNote(note);
           }}
           onToggleNote={(note) => dispatch({ type: "toggleNote", note })}
         />
@@ -70,7 +74,7 @@ export default function App() {
           packKey={state.pack.key}
           currentChordName={selectedChord.displayName}
           onPreview={(notes) => {
-            void previewEngine.playChord(notes);
+            void getPreviewEngine().playChord(notes);
           }}
           onApply={(variation, chordName) =>
             dispatch({
