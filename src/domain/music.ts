@@ -1,5 +1,7 @@
 export const MIN_88_KEY_MIDI_NOTE = 21;
 export const MAX_88_KEY_MIDI_NOTE = 108;
+export const SEQTRAK_MIN_CHORD_NOTE = 0x24;
+export const SEQTRAK_MAX_CHORD_NOTE = 0x60;
 
 export const chromaticKeys = [
   "C",
@@ -17,6 +19,21 @@ export const chromaticKeys = [
 ] as const;
 
 export type KeyName = (typeof chromaticKeys)[number];
+
+export const seqtrakTracks = [
+  { index: 0, name: "KICK" },
+  { index: 1, name: "SNARE" },
+  { index: 2, name: "CLAP" },
+  { index: 3, name: "HAT1" },
+  { index: 4, name: "HAT2" },
+  { index: 5, name: "PERC1" },
+  { index: 6, name: "PERC2" },
+  { index: 7, name: "SYNTH1" },
+  { index: 8, name: "SYNTH2" },
+  { index: 9, name: "DX" }
+] as const;
+
+export type SeqtrakTrackIndex = (typeof seqtrakTracks)[number]["index"];
 
 export interface ChordSlot {
   slotIndex: number;

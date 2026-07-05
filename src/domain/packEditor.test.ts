@@ -111,4 +111,44 @@ describe("pack editor reducer", () => {
     expect(next.pack.tags).toEqual(["house"]);
     expect(next.pack.key).toBe("G");
   });
+
+  it("replaces the editable pack with an imported pack", () => {
+    const imported = createDefaultPack();
+    imported.packName = "Imported Chords";
+    imported.trackSoundName = "SEQTRAK SYNTH1";
+    imported.sourceTrackIndex = 7;
+    imported.chords[0] = { slotIndex: 1, notes: [57, 60, 64], displayName: "Am/C" };
+
+    const selectedState = editorReducer(createEditorState(createDefaultPack()), {
+      type: "selectSlot",
+      slotIndex: 4
+    });
+    const next = editorReducer(selectedState, {
+      type: "replacePack",
+      pack: imported,
+      message: "Read SYNTH1."
+    });
+
+    expect(next.pack).toEqual(imported);
+    expect(next.selectedSlotIndex).toBe(1);
+    expect(next.message).toBe("Read SYNTH1.");
+  });
+
+  it("rejects an invalid imported pack and leaves the editor unchanged", () => {
+    const state = createEditorState(createDefaultPack());
+    const invalid = {
+      ...createDefaultPack(),
+      chords: createDefaultPack().chords.filter((chord) => chord.slotIndex !== 1)
+    };
+
+    const next = editorReducer(state, {
+      type: "replacePack",
+      pack: invalid,
+      message: "Read SYNTH1."
+    });
+
+    expect(next.pack).toBe(state.pack);
+    expect(next.selectedSlotIndex).toBe(1);
+    expect(next.message).toBe("Pack must contain exactly seven chord slots.");
+  });
 });

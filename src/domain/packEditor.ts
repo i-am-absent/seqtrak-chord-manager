@@ -1,5 +1,5 @@
 import type { ChordPack, ChordSlot, KeyName } from "./music";
-import { validateChordNotes } from "./music";
+import { validateChordNotes, validatePack } from "./music";
 
 export interface EditorState {
   pack: ChordPack;
@@ -16,7 +16,9 @@ export type EditorAction =
         key?: KeyName;
       };
     }
-  | { type: "replaceSelectedChord"; notes: number[]; displayName: string };
+  | { type: "replaceSelectedChord"; notes: number[]; displayName: string }
+  | { type: "replacePack"; pack: ChordPack; message?: string }
+  | { type: "setMessage"; message: string };
 
 export function createEditorState(pack: ChordPack): EditorState {
   return {
@@ -40,7 +42,31 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     case "replaceSelectedChord":
       return replaceSelectedChord(state, action.notes, action.displayName);
+    case "replacePack":
+      return replacePack(state, action.pack, action.message);
+    case "setMessage":
+      return {
+        ...state,
+        message: action.message
+      };
   }
+}
+
+function replacePack(state: EditorState, pack: ChordPack, message = ""): EditorState {
+  const validationErrors = validatePack(pack);
+
+  if (validationErrors.length > 0) {
+    return {
+      ...state,
+      message: validationErrors[0]
+    };
+  }
+
+  return {
+    pack,
+    selectedSlotIndex: 1,
+    message
+  };
 }
 
 function selectSlot(state: EditorState, slotIndex: number): EditorState {
