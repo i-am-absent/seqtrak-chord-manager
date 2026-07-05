@@ -82,8 +82,8 @@ select {
 .device-panel {
   align-items: end;
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(260px, auto) minmax(180px, 240px) 1fr;
+  gap: 10px 12px;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px);
   margin-bottom: 16px;
   padding: 14px 16px;
 }
@@ -127,7 +127,8 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: flex-end;
+  grid-column: 1 / -1;
+  justify-content: flex-start;
 }
 
 .editor-top {
