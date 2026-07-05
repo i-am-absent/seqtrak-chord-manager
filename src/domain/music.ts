@@ -69,6 +69,11 @@ export function validateChordNotes(notes: number[]): string[] {
   }
 
   for (const note of notes) {
+    if (!Number.isFinite(note) || !Number.isInteger(note)) {
+      errors.push(`Note ${note} must be a finite integer.`);
+      continue;
+    }
+
     if (note < MIN_88_KEY_MIDI_NOTE || note > MAX_88_KEY_MIDI_NOTE) {
       errors.push(`Note ${note} is outside the 88-key range.`);
     }
@@ -82,6 +87,20 @@ export function validatePack(pack: ChordPack): string[] {
 
   if (pack.chords.length !== 7) {
     errors.push("Pack must contain exactly seven chord slots.");
+  }
+
+  const slotIndexes = pack.chords.map((chord) => chord.slotIndex);
+  const uniqueSlotIndexes = new Set(slotIndexes);
+
+  if (uniqueSlotIndexes.size !== slotIndexes.length) {
+    errors.push("Slot indexes must be unique.");
+  }
+
+  for (let slotIndex = 1; slotIndex <= 7; slotIndex += 1) {
+    if (!uniqueSlotIndexes.has(slotIndex)) {
+      errors.push("Pack must include slots 1 through 7.");
+      break;
+    }
   }
 
   for (const chord of pack.chords) {
