@@ -28,6 +28,13 @@ sudo tailscale serve status
 curl -I http://127.0.0.1:4173/
 ```
 
+PiからMagicDNS名を解決できない場合は、Tailscale DNSを有効にして再確認する。
+
+```bash
+sudo tailscale set --accept-dns=true
+sudo tailscale serve status
+```
+
 ## 公開を停止する
 
 ```bash
