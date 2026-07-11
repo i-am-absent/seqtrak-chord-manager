@@ -1,0 +1,24 @@
+[Unit]
+Description=SEQTRAK Chord Manager web application
+After=network.target
+ConditionPathExists=/home/rpi/seqtrak-chord-manager/dist/index.html
+
+[Service]
+Type=simple
+User=rpi
+Group=rpi
+WorkingDirectory=/home/rpi/seqtrak-chord-manager
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4173
+Environment=DIST_DIR=/home/rpi/seqtrak-chord-manager/dist
+ExecStart=/usr/bin/node /home/rpi/seqtrak-chord-manager/scripts/static-server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
