@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,8 +31,28 @@ async function isFile(filePath) {
   }
 }
 
+function isWithinRoot(root, candidate) {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
+async function resolveFileWithinRoot(root, filePath) {
+  if (!(await isFile(filePath))) return null;
+  try {
+    const realFilePath = await realpath(filePath);
+    return isWithinRoot(root, realFilePath) ? filePath : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveRequestPath(distDir, requestPath) {
-  const root = path.resolve(distDir);
+  const lexicalRoot = path.resolve(distDir);
+  let root;
+  try {
+    root = await realpath(lexicalRoot);
+  } catch {
+    return null;
+  }
   let decodedPath;
   try {
     decodedPath = decodeURIComponent(requestPath.split("?", 1)[0]);
@@ -40,14 +60,14 @@ export async function resolveRequestPath(distDir, requestPath) {
     return null;
   }
   const relativePath = decodedPath.replace(/^\/+/, "");
-  const candidate = path.resolve(root, relativePath || "index.html");
-  if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) return null;
-  if (await isFile(candidate)) return candidate;
-  const fallback = path.join(root, "index.html");
-  return (await isFile(fallback)) ? fallback : null;
+  const candidate = path.resolve(lexicalRoot, relativePath || "index.html");
+  if (!isWithinRoot(lexicalRoot, candidate)) return null;
+  if (await isFile(candidate)) return resolveFileWithinRoot(root, candidate);
+  const fallback = path.join(lexicalRoot, "index.html");
+  return resolveFileWithinRoot(root, fallback);
 }
 
-export function createStaticServer(distDir) {
+export function createStaticServer(distDir, createFileStream = createReadStream) {
   return http.createServer(async (request, response) => {
     if (request.method !== "GET" && request.method !== "HEAD") {
       response.writeHead(405, { Allow: "GET, HEAD" });
@@ -69,7 +89,9 @@ export function createStaticServer(distDir) {
       response.end();
       return;
     }
-    createReadStream(filePath).pipe(response);
+    const stream = createFileStream(filePath);
+    stream.on("error", () => response.destroy());
+    stream.pipe(response);
   });
 }
 
