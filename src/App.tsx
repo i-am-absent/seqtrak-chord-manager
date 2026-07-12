@@ -163,6 +163,7 @@ export default function App() {
           />
           <ChordGrid
             pack={state.pack}
+            keyOffset={0}
             selectedSlotIndex={state.selectedSlotIndex}
             onSelectSlot={(slotIndex) => dispatch({ type: "selectSlot", slotIndex })}
           />
@@ -176,10 +177,13 @@ export default function App() {
 
         <Keyboard88
           activeNotes={selectedChord.notes}
+          keyOffset={0}
           onPreviewNote={(note) => {
             void getPreviewEngine().playNote(note);
           }}
-          onToggleNote={(note) => dispatch({ type: "toggleNote", note })}
+          onToggleNote={(absoluteNote) =>
+            dispatch({ type: "toggleNote", absoluteNote, keyOffset: 0 })
+          }
         />
 
         <RecommendationPanel
@@ -190,8 +194,9 @@ export default function App() {
           }}
           onApply={(variation, chordName) =>
             dispatch({
-              type: "replaceSelectedChord",
-              notes: variation.notes,
+              type: "replaceSelectedChordFromAbsolute",
+              absoluteNotes: variation.notes,
+              keyOffset: 0,
               displayName: chordName
             })
           }

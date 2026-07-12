@@ -1,8 +1,16 @@
-import { isBlackKey, MAX_88_KEY_MIDI_NOTE, midiNoteName, MIN_88_KEY_MIDI_NOTE } from "../domain/music";
+import {
+  isAbsoluteNoteSelectable,
+  isBlackKey,
+  MAX_88_KEY_MIDI_NOTE,
+  midiNoteName,
+  MIN_88_KEY_MIDI_NOTE,
+  relativeToAbsoluteNote
+} from "../domain/music";
 
 interface Keyboard88Props {
   activeNotes: number[];
   candidateNotes?: number[];
+  keyOffset: number;
   onToggleNote: (note: number) => void;
   onPreviewNote: (note: number) => void;
 }
@@ -10,9 +18,11 @@ interface Keyboard88Props {
 export function Keyboard88({
   activeNotes,
   candidateNotes = [],
+  keyOffset,
   onToggleNote,
   onPreviewNote
 }: Keyboard88Props) {
+  const absoluteActiveNotes = activeNotes.map((note) => relativeToAbsoluteNote(note, keyOffset));
   const notes = Array.from(
     { length: MAX_88_KEY_MIDI_NOTE - MIN_88_KEY_MIDI_NOTE + 1 },
     (_, index) => MIN_88_KEY_MIDI_NOTE + index
@@ -25,8 +35,9 @@ export function Keyboard88({
       </span>
       <div className="keyboard">
         {notes.map((note) => {
-          const selected = activeNotes.includes(note);
+          const selected = absoluteActiveNotes.includes(note);
           const candidate = candidateNotes.includes(note);
+          const disabled = !isAbsoluteNoteSelectable(note, keyOffset);
           const label = midiNoteName(note);
           return (
             <button
@@ -40,6 +51,7 @@ export function Keyboard88({
                 candidate ? "candidate" : ""
               ].join(" ")}
               data-candidate={candidate ? "true" : undefined}
+              disabled={disabled}
               key={note}
               onClick={() => {
                 onPreviewNote(note);

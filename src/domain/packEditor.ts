@@ -1,5 +1,5 @@
 import type { ChordPack, ChordSlot, KeyName } from "./music";
-import { validateChordNotes, validatePack } from "./music";
+import { absoluteToRelativeNote, validateChordNotes, validatePack } from "./music";
 
 export interface EditorState {
   pack: ChordPack;
@@ -9,14 +9,19 @@ export interface EditorState {
 
 export type EditorAction =
   | { type: "selectSlot"; slotIndex: number }
-  | { type: "toggleNote"; note: number }
+  | { type: "toggleNote"; absoluteNote: number; keyOffset: number }
   | {
       type: "updateMetadata";
       patch: Partial<Pick<ChordPack, "packName" | "authorName" | "tags" | "key">> & {
         key?: KeyName;
       };
     }
-  | { type: "replaceSelectedChord"; notes: number[]; displayName: string }
+  | {
+      type: "replaceSelectedChordFromAbsolute";
+      absoluteNotes: number[];
+      keyOffset: number;
+      displayName: string;
+    }
   | { type: "replacePack"; pack: ChordPack; message?: string }
   | { type: "setMessage"; message: string };
 
@@ -33,15 +38,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "selectSlot":
       return selectSlot(state, action.slotIndex);
     case "toggleNote":
-      return toggleNote(state, action.note);
+      return toggleNote(state, absoluteToRelativeNote(action.absoluteNote, action.keyOffset));
     case "updateMetadata":
       return {
         ...state,
         pack: { ...state.pack, ...action.patch },
         message: ""
       };
-    case "replaceSelectedChord":
-      return replaceSelectedChord(state, action.notes, action.displayName);
+    case "replaceSelectedChordFromAbsolute":
+      return replaceSelectedChord(
+        state,
+        action.absoluteNotes.map((note) => absoluteToRelativeNote(note, action.keyOffset)),
+        action.displayName
+      );
     case "replacePack":
       return replacePack(state, action.pack, action.message);
     case "setMessage":

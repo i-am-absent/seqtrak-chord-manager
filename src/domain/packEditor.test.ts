@@ -11,9 +11,9 @@ describe("pack editor reducer", () => {
 
   it("toggles notes while keeping sorted note order", () => {
     const state = createEditorState(createDefaultPack());
-    const withoutC = editorReducer(state, { type: "toggleNote", note: 60 });
+    const withoutC = editorReducer(state, { type: "toggleNote", absoluteNote: 60, keyOffset: 0 });
     expect(withoutC.pack.chords[0].notes).toEqual([64, 67]);
-    const withHighC = editorReducer(withoutC, { type: "toggleNote", note: 72 });
+    const withHighC = editorReducer(withoutC, { type: "toggleNote", absoluteNote: 72, keyOffset: 0 });
     expect(withHighC.pack.chords[0].notes).toEqual([64, 67, 72]);
   });
 
@@ -30,7 +30,7 @@ describe("pack editor reducer", () => {
     ];
     const state = editorReducer(createEditorState(pack), { type: "selectSlot", slotIndex: 4 });
 
-    const next = editorReducer(state, { type: "toggleNote", note: 65 });
+    const next = editorReducer(state, { type: "toggleNote", absoluteNote: 65, keyOffset: 0 });
 
     expect(next.pack.chords.find((chord) => chord.slotIndex === 4)?.notes).toEqual([69, 72]);
     expect(next.pack.chords.find((chord) => chord.slotIndex === 3)?.notes).toEqual([64, 67, 71]);
@@ -38,8 +38,8 @@ describe("pack editor reducer", () => {
 
   it("does not allow more than four notes", () => {
     const state = createEditorState(createDefaultPack());
-    const withFourth = editorReducer(state, { type: "toggleNote", note: 72 });
-    const blockedFifth = editorReducer(withFourth, { type: "toggleNote", note: 76 });
+    const withFourth = editorReducer(state, { type: "toggleNote", absoluteNote: 72, keyOffset: 0 });
+    const blockedFifth = editorReducer(withFourth, { type: "toggleNote", absoluteNote: 76, keyOffset: 0 });
     expect(blockedFifth.pack.chords[0].notes).toEqual([60, 64, 67, 72]);
     expect(blockedFifth.message).toBe("A SEQTRAK chord can contain up to four notes.");
   });
@@ -47,7 +47,7 @@ describe("pack editor reducer", () => {
   it("rejects invalid toggled notes", () => {
     const state = createEditorState(createDefaultPack());
 
-    const next = editorReducer(state, { type: "toggleNote", note: 109 });
+    const next = editorReducer(state, { type: "toggleNote", absoluteNote: 109, keyOffset: 0 });
 
     expect(next.pack).toBe(state.pack);
     expect(next.message).toBe("Note 109 is outside the SEQTRAK chord range.");
@@ -58,7 +58,7 @@ describe("pack editor reducer", () => {
     pack.chords[0] = { ...pack.chords[0], notes: [60] };
     const state = createEditorState(pack);
 
-    const next = editorReducer(state, { type: "toggleNote", note: 60 });
+    const next = editorReducer(state, { type: "toggleNote", absoluteNote: 60, keyOffset: 0 });
 
     expect(next.pack.chords[0].notes).toEqual([60]);
     expect(next.message).toBe("A SEQTRAK chord must contain at least one note.");
@@ -68,8 +68,9 @@ describe("pack editor reducer", () => {
     const state = createEditorState(createDefaultPack());
 
     const next = editorReducer(state, {
-      type: "replaceSelectedChord",
-      notes: [67, 60, 64],
+      type: "replaceSelectedChordFromAbsolute",
+      absoluteNotes: [67, 60, 64],
+      keyOffset: 0,
       displayName: "C sorted"
     });
 
@@ -82,13 +83,35 @@ describe("pack editor reducer", () => {
     const state = createEditorState(createDefaultPack());
 
     const next = editorReducer(state, {
-      type: "replaceSelectedChord",
-      notes: [60, 60],
+      type: "replaceSelectedChordFromAbsolute",
+      absoluteNotes: [60, 60],
+      keyOffset: 0,
       displayName: "Duplicate C"
     });
 
     expect(next.pack).toBe(state.pack);
     expect(next.message).toBe("Chord notes must be unique.");
+  });
+
+  it("stores toggled absolute notes relative to KEY", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const next = editorReducer(state, { type: "toggleNote", absoluteNote: 61, keyOffset: 1 });
+
+    expect(next.pack.chords[0].notes).not.toContain(60);
+  });
+
+  it("stores replacement absolute notes relative to KEY", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const applied = editorReducer(state, {
+      type: "replaceSelectedChordFromAbsolute",
+      absoluteNotes: [61, 65, 68],
+      keyOffset: 1,
+      displayName: "C#"
+    });
+
+    expect(applied.pack.chords[0].notes).toEqual([60, 64, 67]);
   });
 
   it("rejects invalid slot selection", () => {
