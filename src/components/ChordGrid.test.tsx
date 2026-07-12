@@ -31,5 +31,8 @@ describe("ChordGrid", () => {
 
     rerender(<ChordGrid pack={pack} keyOffset={2} selectedSlotIndex={1} onSelectSlot={vi.fn()} />);
     expect(screen.getByText("D4 F#4 A4")).toBeInTheDocument();
+
+    rerender(<ChordGrid pack={pack} keyOffset={11} selectedSlotIndex={1} onSelectSlot={vi.fn()} />);
+    expect(screen.getByText("B4 D#5 F#5")).toBeInTheDocument();
   });
 });

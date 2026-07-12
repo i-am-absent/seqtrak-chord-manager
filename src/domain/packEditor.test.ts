@@ -114,6 +114,19 @@ describe("pack editor reducer", () => {
     expect(applied.pack.chords[0].notes).toEqual([60, 64, 67]);
   });
 
+  it("stores absolute replacement notes relative to KEY offset 11", () => {
+    const state = createEditorState(createDefaultPack());
+
+    const applied = editorReducer(state, {
+      type: "replaceSelectedChordFromAbsolute",
+      absoluteNotes: [71, 75, 78],
+      keyOffset: 11,
+      displayName: "B"
+    });
+
+    expect(applied.pack.chords[0].notes).toEqual([60, 64, 67]);
+  });
+
   it("rejects invalid slot selection", () => {
     const state = createEditorState(createDefaultPack());
 

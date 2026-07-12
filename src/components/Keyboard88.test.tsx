@@ -29,13 +29,35 @@ describe("Keyboard88", () => {
     expect(onToggle).toHaveBeenCalledWith(61);
 
     const belowRange = screen.getByRole("button", { name: "C2" });
-    const aboveRange = screen.getByRole("button", { name: "D#7" });
+    const lowerBoundary = screen.getByRole("button", { name: "C#2" });
+    const upperBoundary = screen.getByRole("button", { name: "C#7" });
+    const aboveRange = screen.getByRole("button", { name: "D7" });
     expect(belowRange).toBeDisabled();
+    expect(lowerBoundary).toBeEnabled();
+    expect(upperBoundary).toBeEnabled();
     expect(aboveRange).toBeDisabled();
     onPreview.mockClear();
     onToggle.mockClear();
     await userEvent.click(belowRange);
+    await userEvent.click(aboveRange);
     expect(onPreview).not.toHaveBeenCalled();
     expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("maps active notes and selectable bounds at KEY offset 11", () => {
+    renderApp(
+      <Keyboard88
+        activeNotes={[60, 64, 67]}
+        keyOffset={11}
+        onToggleNote={vi.fn()}
+        onPreviewNote={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "B4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "A#2" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "B2" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "B7" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "C8" })).toBeDisabled();
   });
 });
