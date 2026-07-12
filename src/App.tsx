@@ -6,7 +6,13 @@ import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { createEditorState, editorReducer } from "./domain/packEditor";
-import { assertSeqtrakKeyOffset, createDefaultPack, seqtrakTracks, type SeqtrakTrackIndex } from "./domain/music";
+import {
+  assertSeqtrakKeyOffset,
+  createDefaultPack,
+  relativeToAbsoluteNote,
+  seqtrakTracks,
+  type SeqtrakTrackIndex
+} from "./domain/music";
 import { createMidiAccessService } from "./midi/midiAccessService";
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
@@ -24,6 +30,7 @@ export default function App() {
   const clientRef = useRef<SeqtrakClient | null>(null);
   const keyUnsubscribeRef = useRef<(() => void) | null>(null);
   const stateUnsubscribeRef = useRef<(() => void) | null>(null);
+  const connectionGenerationRef = useRef(0);
   const previewEngineRef = useRef<PreviewEngine | null>(null);
   const getPreviewEngine = useCallback(() => {
     previewEngineRef.current ??= createPreviewEngine();
@@ -34,6 +41,7 @@ export default function App() {
   );
 
   const releaseClient = useCallback(() => {
+    connectionGenerationRef.current += 1;
     stateUnsubscribeRef.current?.();
     stateUnsubscribeRef.current = null;
     keyUnsubscribeRef.current?.();
@@ -50,11 +58,16 @@ export default function App() {
   }
 
   const handleConnect = useCallback(async () => {
+    let generation = 0;
     try {
       setDeviceStatus("busy");
       setCurrentScale(null);
       releaseClient();
+      generation = connectionGenerationRef.current;
       const access = await createMidiAccessService().requestAccess();
+      if (generation !== connectionGenerationRef.current) {
+        return;
+      }
       setMidiInputs(access.inputs);
       setMidiOutputs(access.outputs);
 
@@ -73,16 +86,25 @@ export default function App() {
       }
 
       const client = new SeqtrakClient(input, output);
+      if (generation !== connectionGenerationRef.current) {
+        client.dispose();
+        return;
+      }
       clientRef.current = client;
-      const receiveKey = (value: number) => {
+      const receiveKey = (value: number): boolean => {
+        if (generation !== connectionGenerationRef.current) {
+          return false;
+        }
         try {
           assertSeqtrakKeyOffset(value);
           setSeqtrakKeyOffset(value);
+          return true;
         } catch (error) {
           dispatch({
             type: "setMessage",
             message: error instanceof Error ? error.message : "Invalid SEQTRAK KEY."
           });
+          return false;
         }
       };
       keyUnsubscribeRef.current = client.subscribeParameter(keyAddress(), receiveKey);
@@ -96,10 +118,18 @@ export default function App() {
           setDeviceStatus("disconnected");
         }
       });
-      receiveKey(await client.readCurrentKey());
+      const initialKeyIsValid = receiveKey(await client.readCurrentKey());
+      if (generation !== connectionGenerationRef.current) {
+        return;
+      }
       setDeviceStatus("connected");
-      dispatch({ type: "setMessage", message: "SEQTRAK connected." });
+      if (initialKeyIsValid) {
+        dispatch({ type: "setMessage", message: "SEQTRAK connected." });
+      }
     } catch (error) {
+      if (generation !== connectionGenerationRef.current) {
+        return;
+      }
       releaseClient();
       setCurrentScale(null);
       setDeviceStatus(error instanceof Error && error.message.includes("Web MIDI") ? "unsupported" : "error");
@@ -207,6 +237,14 @@ export default function App() {
             keyOffset={seqtrakKeyOffset}
             selectedSlotIndex={state.selectedSlotIndex}
             onSelectSlot={(slotIndex) => dispatch({ type: "selectSlot", slotIndex })}
+            onPreviewSlot={(slotIndex) => {
+              const chord = state.pack.chords.find((candidate) => candidate.slotIndex === slotIndex);
+              if (chord) {
+                void getPreviewEngine().playChord(
+                  chord.notes.map((note) => relativeToAbsoluteNote(note, seqtrakKeyOffset))
+                );
+              }
+            }}
           />
         </div>
 

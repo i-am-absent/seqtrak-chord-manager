@@ -1,11 +1,17 @@
 import "@testing-library/jest-dom/vitest";
-import { waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createDefaultPack } from "./domain/music";
 import { renderApp } from "./test/render";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
 
 const previewMocks = vi.hoisted(() => ({
   createPreviewEngine: vi.fn(),
@@ -60,6 +66,7 @@ describe("App", () => {
     midiMocks.keyUnsubscribe.mockReset();
     midiMocks.stateUnsubscribe.mockReset();
     midiMocks.mockClient.dispose.mockReset();
+    midiMocks.seqtrakClientConstructor.mockReset().mockReturnValue(midiMocks.mockClient);
     midiMocks.mockClient.readCurrentKey.mockReset().mockImplementation(async () => {
       midiMocks.keyCallback?.(1);
       return 1;
@@ -84,7 +91,6 @@ describe("App", () => {
         return midiMocks.stateUnsubscribe;
       })
     });
-    midiMocks.seqtrakClientConstructor.mockReturnValue(midiMocks.mockClient);
     midiMocks.readPackFromSeqtrak.mockResolvedValue({
       scale: 2,
       pack: {
@@ -103,16 +109,73 @@ describe("App", () => {
     await waitFor(() => expect(midiMocks.mockClient.readCurrentKey).toHaveBeenCalled());
 
     expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true");
-    midiMocks.keyCallback?.(2);
+    act(() => midiMocks.keyCallback?.(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByText("D4 F#4 A4")).toBeInTheDocument();
+    act(() => midiMocks.keyCallback?.(0));
+    expect(screen.getByText("C4 E4 G4")).toBeInTheDocument();
+    act(() => midiMocks.keyCallback?.(2));
     await userEvent.click(screen.getByRole("button", { name: "D4" }));
     expect(previewMocks.playNote).toHaveBeenCalledWith(62);
     expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "false");
 
     await userEvent.click(screen.getAllByRole("button", { name: /Apply variation/ })[0]);
-    const recommendation = previewMocks.playChord.mock.calls.at(-1)?.[0] as number[];
-    expect(recommendation).toBeDefined();
-    expect(previewMocks.playChord).toHaveBeenCalledWith(recommendation);
+    expect(previewMocks.playChord).toHaveBeenCalledWith([62, 65, 69, 72]);
+    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "F4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "A4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "C5" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("previews a stored relative chord at the live KEY", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    act(() => midiMocks.keyCallback?.(2));
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    expect(previewMocks.playChord).toHaveBeenCalledWith([64, 67, 71]);
+  });
+
+  it("does not complete a connection after unmount while MIDI access is pending", async () => {
+    const pending = deferred<Awaited<ReturnType<typeof midiMocks.requestAccess>>>();
+    midiMocks.requestAccess.mockReturnValueOnce(pending.promise);
+    const view = renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    view.unmount();
+    pending.resolve({ inputs: [], outputs: [], subscribeStateChange: vi.fn() });
+    await Promise.resolve();
+    expect(midiMocks.seqtrakClientConstructor).not.toHaveBeenCalled();
+  });
+
+  it("does not restore connected state after disconnect while KEY read is pending", async () => {
+    const pendingKey = deferred<number>();
+    midiMocks.mockClient.readCurrentKey.mockReturnValueOnce(pendingKey.promise);
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.stateCallback).toBeDefined());
+    act(() => midiMocks.stateCallback?.({ port: { id: "input-1", state: "disconnected" } }));
+    await act(async () => pendingKey.resolve(2));
+    await waitFor(() => expect(screen.getByText("Status: disconnected")).toBeInTheDocument());
+    expect(screen.queryByText("SEQTRAK connected.")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale overlapping access request", async () => {
+    const first = deferred<Awaited<ReturnType<typeof midiMocks.requestAccess>>>();
+    const access = await midiMocks.requestAccess();
+    midiMocks.requestAccess.mockReset().mockReturnValueOnce(first.promise).mockResolvedValueOnce(access);
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await act(async () => first.resolve(access));
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an invalid initial KEY error visible", async () => {
+    midiMocks.mockClient.readCurrentKey.mockResolvedValueOnce(12);
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("SEQTRAK KEY must be an integer from 0 to 11.")).toBeInTheDocument());
   });
 
   it("previews stored relative chords at the live KEY and rejects invalid KEY values", async () => {
@@ -137,6 +200,29 @@ describe("App", () => {
     expect(midiMocks.stateUnsubscribe).toHaveBeenCalledTimes(2);
     expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(2);
     view.unmount();
+  });
+
+  it("ignores unrelated state changes and resets KEY on output disconnect", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true"));
+    act(() => midiMocks.stateCallback?.({ port: { id: "other", state: "disconnected" } }));
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
+    act(() => midiMocks.stateCallback?.({ port: { id: "output-1", state: "disconnected" } }));
+    expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("resets KEY immediately while reconnect is pending", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true"));
+    const pendingKey = deferred<number>();
+    midiMocks.mockClient.readCurrentKey.mockReturnValueOnce(pendingKey.promise);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("aria-pressed", "true");
+    await act(async () => pendingKey.resolve(3));
   });
 
   it("releases a connected client on unmount", async () => {

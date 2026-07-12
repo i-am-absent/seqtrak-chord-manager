@@ -9,8 +9,9 @@ import { ChordGrid } from "./ChordGrid";
 describe("ChordGrid", () => {
   it("renders space plus seven slots and selects a slot", async () => {
     const onSelect = vi.fn();
+    const onPreview = vi.fn();
     renderApp(
-      <ChordGrid pack={createDefaultPack()} keyOffset={0} selectedSlotIndex={1} onSelectSlot={onSelect} />
+      <ChordGrid pack={createDefaultPack()} keyOffset={0} selectedSlotIndex={1} onSelectSlot={onSelect} onPreviewSlot={onPreview} />
     );
     const grid = screen.getByRole("group", { name: "Chord slots" });
     expect(within(grid).getByText("Space")).toBeInTheDocument();
@@ -19,6 +20,7 @@ describe("ChordGrid", () => {
     expect(within(grid).getByRole("button", { name: "Slot 7 Bdim" })).toBeInTheDocument();
     await userEvent.click(within(grid).getByRole("button", { name: "Slot 4 F" }));
     expect(onSelect).toHaveBeenCalledWith(4);
+    expect(onPreview).toHaveBeenCalledWith(4);
   });
 
   it("renders absolute pitch names for the current KEY", () => {

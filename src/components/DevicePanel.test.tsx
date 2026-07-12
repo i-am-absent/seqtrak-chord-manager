@@ -87,7 +87,7 @@ describe("DevicePanel", () => {
 
     rerender(<DevicePanel {...props} status="busy" />);
 
-    expect(screen.getByRole("button", { name: "Connect SEQTRAK" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Connect SEQTRAK" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeDisabled();
     expect(screen.getByLabelText("Target track")).toBeDisabled();

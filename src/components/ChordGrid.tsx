@@ -5,9 +5,10 @@ interface ChordGridProps {
   keyOffset: number;
   selectedSlotIndex: number;
   onSelectSlot: (slotIndex: number) => void;
+  onPreviewSlot?: (slotIndex: number) => void;
 }
 
-export function ChordGrid({ pack, keyOffset, selectedSlotIndex, onSelectSlot }: ChordGridProps) {
+export function ChordGrid({ pack, keyOffset, selectedSlotIndex, onSelectSlot, onPreviewSlot }: ChordGridProps) {
   return (
     <div className="chord-grid" role="group" aria-label="Chord slots">
       <div className="slot-card space-slot">Space</div>
@@ -20,7 +21,10 @@ export function ChordGrid({ pack, keyOffset, selectedSlotIndex, onSelectSlot }: 
         return <button
           className={chord.slotIndex === selectedSlotIndex ? "slot-card selected" : "slot-card"}
           key={chord.slotIndex}
-          onClick={() => onSelectSlot(chord.slotIndex)}
+          onClick={() => {
+            onSelectSlot(chord.slotIndex);
+            onPreviewSlot?.(chord.slotIndex);
+          }}
           type="button"
           aria-label={`Slot ${chord.slotIndex} ${chord.displayName}`}
         >

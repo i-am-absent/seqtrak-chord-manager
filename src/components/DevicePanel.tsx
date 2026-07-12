@@ -34,7 +34,7 @@ export function DevicePanel({
   return (
     <section className="device-panel panel" aria-label="SEQTRAK device">
       <div className="device-actions">
-        <button type="button" onClick={onConnect} disabled={isBusy}>
+        <button type="button" onClick={onConnect}>
           Connect SEQTRAK
         </button>
         <button type="button" onClick={onRead} disabled={!canRead}>
