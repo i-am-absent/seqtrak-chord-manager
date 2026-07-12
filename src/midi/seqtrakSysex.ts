@@ -48,6 +48,10 @@ export function scaleAddress(): SysexAddress {
   return [0x30, 0x40, 0x7e];
 }
 
+export function keyAddress(): SysexAddress {
+  return [0x30, 0x40, 0x7f];
+}
+
 export function encodeTrackSoundNameAddress(
   trackIndex: SeqtrakTrackIndex,
   byteIndex: number

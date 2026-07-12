@@ -7,11 +7,19 @@ import {
   encodeParameterRequest,
   encodeTrackChordAddress,
   encodeTrackSoundNameAddress,
+  keyAddress,
   noteToCodeValue,
   scaleAddress
 } from "./seqtrakSysex";
 
 describe("SEQTRAK SysEx helpers", () => {
+  it("encodes the global KEY address", () => {
+    expect(keyAddress()).toEqual([0x30, 0x40, 0x7f]);
+    expect(encodeParameterRequest(keyAddress())).toEqual([
+      0xf0, 0x43, 0x30, 0x7f, 0x1c, 0x0c, 0x30, 0x40, 0x7f, 0xf7
+    ]);
+  });
+
   it("encodes request and change frames", () => {
     expect(encodeParameterRequest([0x30, 0x40, 0x7e])).toEqual([
       0xf0, 0x43, 0x30, 0x7f, 0x1c, 0x0c, 0x30, 0x40, 0x7e, 0xf7
