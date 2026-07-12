@@ -37,3 +37,13 @@
 - Disconnect SEQTRAK and click read: app should show a recovery message.
 - Deny Web MIDI permission: app should explain that Web MIDI/SysEx is required.
 - Select `KICK` and read: app should still attempt read because drum tracks can act as SYNTH type.
+
+## KEY-relative chord verification
+
+1. Set the SEQTRAK KEY to `0`, read all seven chord slots, and compare every highlighted or previewed note with the notes played by SEQTRAK.
+2. Without rereading the chord slots, change the SEQTRAK KEY to `1`. Verify that all highlights, pitch names, selectable boundaries, and previews move up by one semitone.
+3. Change the SEQTRAK KEY to `11` and repeat the highlight, pitch-name, boundary, and preview checks. In particular, verify relative chord values `0x24` and `0x60`.
+4. Edit an enabled absolute key, write the chord pack, and reread it. Verify that changing KEY does not alter the raw relative chord value stored by SEQTRAK.
+5. Verify that absolute keys outside `0x24 + KEY .. 0x60 + KEY` are disabled.
+6. Disconnect SEQTRAK and verify that the same relative chord pack displays and previews at KEY `0`.
+7. Record any observed device range different from `0x24..0x60`. Change only the centralized range constants in a separate reviewed change.
