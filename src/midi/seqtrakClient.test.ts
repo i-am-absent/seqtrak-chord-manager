@@ -68,6 +68,7 @@ describe("SeqtrakClient", () => {
 
     await expect(client.readTrackSoundName(7)).resolves.toBe("Pad");
     expect(requestedBytes).toEqual(Array.from({ length: 0x64 }, (_, index) => index));
+    client.dispose();
   });
 
   it("reads seven chord slots for the selected scale and returns a valid pack", async () => {
@@ -91,6 +92,7 @@ describe("SeqtrakClient", () => {
     expect(pack.chords[0].notes).toEqual([60, 64, 67]);
     expect(validatePack(pack)).toEqual([]);
     expect(output.sentMessages[0]).toEqual(encodeParameterRequest(keyAddress()));
+    client.dispose();
   });
 
   it("writes all 28 chord parameters with off padding", async () => {
@@ -121,6 +123,7 @@ describe("SeqtrakClient", () => {
     expect(output.sentMessages[28]).toEqual(
       encodeParameterChange(encodeTrackChordAddress({ trackIndex: 7, scale: 0, slotIndex: 7, noteIndex: 3 }), 0)
     );
+    client.dispose();
   });
 
   it("rejects invalid packs before sending any chord parameters", async () => {
@@ -140,6 +143,7 @@ describe("SeqtrakClient", () => {
       "Note 20 is outside the SEQTRAK chord range."
     );
     expect(output.sentMessages).toEqual([encodeParameterRequest(keyAddress())]);
+    client.dispose();
   });
 
   it("times out and cleans up listeners when a requested parameter never responds", async () => {
@@ -154,6 +158,7 @@ describe("SeqtrakClient", () => {
       await vi.advanceTimersByTimeAsync(10);
 
       await rejection;
+      expect(vi.getTimerCount()).toBe(0);
       expect(input.listenerCount).toBe(1);
       client.dispose();
       expect(input.listenerCount).toBe(0);
@@ -162,21 +167,27 @@ describe("SeqtrakClient", () => {
     }
   });
 
-  it("cleans up listeners when sending a request throws", async () => {
-    const input = new MockMidiInput();
-    const output: MidiOutputLike = {
-      id: "throwing-output",
-      name: "Throwing Output",
-      send: () => {
-        throw new Error("MIDI output failed.");
-      }
-    };
-    const client = new SeqtrakClient(input, output);
+  it("cleans up the waiter and timer when sending a request throws", async () => {
+    vi.useFakeTimers();
+    try {
+      const input = new MockMidiInput();
+      const output: MidiOutputLike = {
+        id: "throwing-output",
+        name: "Throwing Output",
+        send: () => {
+          throw new Error("MIDI output failed.");
+        }
+      };
+      const client = new SeqtrakClient(input, output);
 
-    await expect(client.readCurrentScale()).rejects.toThrow("MIDI output failed.");
-    expect(input.listenerCount).toBe(1);
-    client.dispose();
-    expect(input.listenerCount).toBe(0);
+      await expect(client.readCurrentScale()).rejects.toThrow("MIDI output failed.");
+      expect(vi.getTimerCount()).toBe(0);
+      expect(input.listenerCount).toBe(1);
+      client.dispose();
+      expect(input.listenerCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores unmatched parameter change responses while waiting for the requested address", async () => {
@@ -188,6 +199,7 @@ describe("SeqtrakClient", () => {
     const client = new SeqtrakClient(input, output);
 
     await expect(client.readCurrentScale()).resolves.toBe(5);
+    client.dispose();
   });
 
   it("routes unsolicited parameter changes by address and disposes its listener", () => {

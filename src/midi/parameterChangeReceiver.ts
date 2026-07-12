@@ -40,10 +40,11 @@ export class ParameterChangeReceiver {
       this.callbacks.set(key, callbacks);
     }
 
-    callbacks.add(callback);
+    const registration = (value: number) => callback(value);
+    callbacks.add(registration);
 
     return () => {
-      callbacks.delete(callback);
+      callbacks.delete(registration);
 
       if (callbacks.size === 0) {
         this.callbacks.delete(key);

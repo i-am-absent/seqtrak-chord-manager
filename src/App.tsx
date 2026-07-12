@@ -147,13 +147,18 @@ export default function App() {
   }, []);
 
   const handleRead = useCallback(async () => {
-    if (!clientRef.current) {
+    const client = clientRef.current;
+    const generation = connectionGenerationRef.current;
+    if (!client) {
       return;
     }
 
     try {
       setDeviceStatus("busy");
-      const result = await readPackFromSeqtrak(clientRef.current, selectedTrackIndex);
+      const result = await readPackFromSeqtrak(client, selectedTrackIndex);
+      if (client !== clientRef.current || generation !== connectionGenerationRef.current) {
+        return;
+      }
       setCurrentScale(result.scale);
       dispatch({
         type: "replacePack",
@@ -162,6 +167,9 @@ export default function App() {
       });
       setDeviceStatus("connected");
     } catch (error) {
+      if (client !== clientRef.current || generation !== connectionGenerationRef.current) {
+        return;
+      }
       setDeviceStatus(clientRef.current ? "connected" : "error");
       dispatch({
         type: "setMessage",
@@ -171,7 +179,9 @@ export default function App() {
   }, [selectedTrackIndex]);
 
   const handleWrite = useCallback(async () => {
-    if (!clientRef.current || currentScale === null) {
+    const client = clientRef.current;
+    const generation = connectionGenerationRef.current;
+    if (!client || currentScale === null) {
       return;
     }
 
@@ -185,17 +195,23 @@ export default function App() {
 
     try {
       setDeviceStatus("busy");
-      const result = await writePackToSeqtrak(clientRef.current, {
+      const result = await writePackToSeqtrak(client, {
         trackIndex: selectedTrackIndex,
         scale: currentScale,
         pack: state.pack
       });
+      if (client !== clientRef.current || generation !== connectionGenerationRef.current) {
+        return;
+      }
       dispatch({
         type: "setMessage",
         message: result.verified ? "Write verified." : "Write sent, but verification did not match."
       });
       setDeviceStatus("connected");
     } catch (error) {
+      if (client !== clientRef.current || generation !== connectionGenerationRef.current) {
+        return;
+      }
       setDeviceStatus(clientRef.current ? "connected" : "error");
       dispatch({
         type: "setMessage",

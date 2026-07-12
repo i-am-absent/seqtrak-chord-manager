@@ -29,21 +29,24 @@ describe("ParameterChangeReceiver", () => {
     expect(scale).toHaveBeenCalledWith(3);
   });
 
-  it("deduplicates callbacks and safely snapshots callbacks during dispatch", () => {
+  it("treats duplicate callback registrations as independent subscriptions", () => {
     const input = new MockMidiInput();
     const receiver = new ParameterChangeReceiver(input);
-    const second = vi.fn();
-    let unsubscribeFirst = () => {};
-    const first = vi.fn(() => unsubscribeFirst());
+    const callback = vi.fn();
+    const unsubscribeFirst = receiver.subscribe(keyAddress(), callback);
+    const unsubscribeSecond = receiver.subscribe(keyAddress(), callback);
 
-    unsubscribeFirst = receiver.subscribe(keyAddress(), first);
-    receiver.subscribe(keyAddress(), first);
-    receiver.subscribe(keyAddress(), second);
     input.emit(encodeParameterChange(keyAddress(), 5));
-    input.emit(encodeParameterChange(keyAddress(), 6));
+    expect(callback).toHaveBeenCalledTimes(2);
 
-    expect(first).toHaveBeenCalledOnce();
-    expect(second).toHaveBeenCalledTimes(2);
+    unsubscribeFirst();
+    input.emit(encodeParameterChange(keyAddress(), 6));
+    expect(callback).toHaveBeenCalledTimes(3);
+
+    unsubscribeSecond();
+    input.emit(encodeParameterChange(keyAddress(), 7));
+    expect(callback).toHaveBeenCalledTimes(3);
+    receiver.dispose();
   });
 
   it("resolves waiters through the same stream and removes everything on dispose", async () => {
@@ -73,8 +76,10 @@ describe("ParameterChangeReceiver", () => {
 
       await vi.advanceTimersByTimeAsync(10);
       await rejection;
+      expect(vi.getTimerCount()).toBe(0);
       input.emit(encodeParameterChange(keyAddress(), 9));
       expect(persistent).toHaveBeenCalledWith(9);
+      receiver.dispose();
     } finally {
       vi.useRealTimers();
     }

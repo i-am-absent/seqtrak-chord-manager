@@ -280,6 +280,10 @@ describe("App", () => {
       { id: "input-1", name: "SEQTRAK Input" },
       expect.objectContaining({ id: "output-1", name: "SEQTRAK Output" })
     );
+    expect(midiMocks.mockClient.subscribeParameter).toHaveBeenCalledWith(
+      [0x30, 0x40, 0x7f],
+      expect.any(Function)
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
 
@@ -341,5 +345,71 @@ describe("App", () => {
     });
     expect(screen.getByText("Status: connected")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Read from SEQTRAK" })).toBeEnabled();
+  });
+
+  it("ignores a read completion from a client released by reconnect", async () => {
+    const pendingRead = deferred<Awaited<ReturnType<typeof midiMocks.readPackFromSeqtrak>>>();
+    midiMocks.readPackFromSeqtrak.mockReturnValueOnce(pendingRead.promise);
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("SEQTRAK connected.")).toBeInTheDocument());
+
+    await act(async () => pendingRead.resolve({
+      scale: 6,
+      pack: {
+        ...createDefaultPack(),
+        packName: "Stale imported pack",
+        trackSoundName: "Stale sound",
+        sourceTrackIndex: 7
+      }
+    }));
+
+    expect(screen.queryByDisplayValue("Stale imported pack")).not.toBeInTheDocument();
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByText("SEQTRAK connected.")).toBeInTheDocument();
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+  });
+
+  it("ignores a read error from a client released by reconnect", async () => {
+    let rejectRead!: (error: Error) => void;
+    const pendingRead = new Promise<never>((_resolve, reject) => { rejectRead = reject; });
+    midiMocks.readPackFromSeqtrak.mockReturnValueOnce(pendingRead);
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("SEQTRAK connected.")).toBeInTheDocument());
+
+    await act(async () => rejectRead(new Error("Stale read failed.")));
+
+    expect(screen.queryByText("Stale read failed.")).not.toBeInTheDocument();
+    expect(screen.getByText("SEQTRAK connected.")).toBeInTheDocument();
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+  });
+
+  it("ignores a write completion after the selected port disconnects", async () => {
+    const pendingWrite = deferred<Awaited<ReturnType<typeof midiMocks.writePackToSeqtrak>>>();
+    midiMocks.writePackToSeqtrak.mockReturnValueOnce(pendingWrite.promise);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Write to SEQTRAK" }));
+    act(() => midiMocks.stateCallback?.({ port: { id: "input-1", state: "disconnected" } }));
+
+    await act(async () => pendingWrite.resolve({ verified: true }));
+
+    expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
+    expect(screen.queryByText("Write verified.")).not.toBeInTheDocument();
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
   });
 });
