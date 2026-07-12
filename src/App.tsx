@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { createPreviewEngine, type PreviewEngine } from "./audio/previewEngine";
 import { ChordGrid } from "./components/ChordGrid";
 import { DevicePanel, type DeviceStatus } from "./components/DevicePanel";
@@ -6,10 +6,11 @@ import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { createEditorState, editorReducer } from "./domain/packEditor";
-import { createDefaultPack, seqtrakTracks, type SeqtrakTrackIndex } from "./domain/music";
+import { assertSeqtrakKeyOffset, createDefaultPack, seqtrakTracks, type SeqtrakTrackIndex } from "./domain/music";
 import { createMidiAccessService } from "./midi/midiAccessService";
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
+import { keyAddress } from "./midi/seqtrakSysex";
 import { readPackFromSeqtrak, writePackToSeqtrak } from "./midi/deviceWorkflow";
 
 export default function App() {
@@ -19,7 +20,10 @@ export default function App() {
   const [midiOutputs, setMidiOutputs] = useState<MidiOutputLike[]>([]);
   const [selectedTrackIndex, setSelectedTrackIndex] = useState<SeqtrakTrackIndex>(7);
   const [currentScale, setCurrentScale] = useState<number | null>(null);
+  const [seqtrakKeyOffset, setSeqtrakKeyOffset] = useState(0);
   const clientRef = useRef<SeqtrakClient | null>(null);
+  const keyUnsubscribeRef = useRef<(() => void) | null>(null);
+  const stateUnsubscribeRef = useRef<(() => void) | null>(null);
   const previewEngineRef = useRef<PreviewEngine | null>(null);
   const getPreviewEngine = useCallback(() => {
     previewEngineRef.current ??= createPreviewEngine();
@@ -29,6 +33,18 @@ export default function App() {
     (chord) => chord.slotIndex === state.selectedSlotIndex
   );
 
+  const releaseClient = useCallback(() => {
+    stateUnsubscribeRef.current?.();
+    stateUnsubscribeRef.current = null;
+    keyUnsubscribeRef.current?.();
+    keyUnsubscribeRef.current = null;
+    clientRef.current?.dispose();
+    clientRef.current = null;
+    setSeqtrakKeyOffset(0);
+  }, []);
+
+  useEffect(() => releaseClient, [releaseClient]);
+
   if (!selectedChord) {
     throw new Error(`Selected slot ${state.selectedSlotIndex} does not exist in this pack.`);
   }
@@ -37,6 +53,7 @@ export default function App() {
     try {
       setDeviceStatus("busy");
       setCurrentScale(null);
+      releaseClient();
       const access = await createMidiAccessService().requestAccess();
       setMidiInputs(access.inputs);
       setMidiOutputs(access.outputs);
@@ -45,7 +62,7 @@ export default function App() {
       const output = access.outputs[0];
 
       if (!input || !output) {
-        clientRef.current = null;
+        releaseClient();
         setCurrentScale(null);
         setDeviceStatus("error");
         dispatch({
@@ -55,11 +72,35 @@ export default function App() {
         return;
       }
 
-      clientRef.current = new SeqtrakClient(input, output);
+      const client = new SeqtrakClient(input, output);
+      clientRef.current = client;
+      const receiveKey = (value: number) => {
+        try {
+          assertSeqtrakKeyOffset(value);
+          setSeqtrakKeyOffset(value);
+        } catch (error) {
+          dispatch({
+            type: "setMessage",
+            message: error instanceof Error ? error.message : "Invalid SEQTRAK KEY."
+          });
+        }
+      };
+      keyUnsubscribeRef.current = client.subscribeParameter(keyAddress(), receiveKey);
+      stateUnsubscribeRef.current = access.subscribeStateChange((event) => {
+        if (
+          event.port.state === "disconnected" &&
+          (event.port.id === input.id || event.port.id === output.id)
+        ) {
+          releaseClient();
+          setCurrentScale(null);
+          setDeviceStatus("disconnected");
+        }
+      });
+      receiveKey(await client.readCurrentKey());
       setDeviceStatus("connected");
       dispatch({ type: "setMessage", message: "SEQTRAK connected." });
     } catch (error) {
-      clientRef.current = null;
+      releaseClient();
       setCurrentScale(null);
       setDeviceStatus(error instanceof Error && error.message.includes("Web MIDI") ? "unsupported" : "error");
       dispatch({
@@ -67,7 +108,7 @@ export default function App() {
         message: error instanceof Error ? error.message : "Failed to connect SEQTRAK."
       });
     }
-  }, []);
+  }, [releaseClient]);
 
   const handleTrackChange = useCallback((trackIndex: SeqtrakTrackIndex) => {
     setSelectedTrackIndex(trackIndex);
@@ -163,7 +204,7 @@ export default function App() {
           />
           <ChordGrid
             pack={state.pack}
-            keyOffset={0}
+            keyOffset={seqtrakKeyOffset}
             selectedSlotIndex={state.selectedSlotIndex}
             onSelectSlot={(slotIndex) => dispatch({ type: "selectSlot", slotIndex })}
           />
@@ -177,12 +218,12 @@ export default function App() {
 
         <Keyboard88
           activeNotes={selectedChord.notes}
-          keyOffset={0}
+          keyOffset={seqtrakKeyOffset}
           onPreviewNote={(note) => {
             void getPreviewEngine().playNote(note);
           }}
           onToggleNote={(absoluteNote) =>
-            dispatch({ type: "toggleNote", absoluteNote, keyOffset: 0 })
+            dispatch({ type: "toggleNote", absoluteNote, keyOffset: seqtrakKeyOffset })
           }
         />
 
@@ -196,7 +237,7 @@ export default function App() {
             dispatch({
               type: "replaceSelectedChordFromAbsolute",
               absoluteNotes: variation.notes,
-              keyOffset: 0,
+              keyOffset: seqtrakKeyOffset,
               displayName: chordName
             })
           }

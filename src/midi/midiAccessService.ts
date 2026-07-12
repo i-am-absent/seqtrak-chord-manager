@@ -8,12 +8,19 @@ interface NavigatorMidiLike {
   requestMIDIAccess?: (options: { sysex: boolean }) => Promise<{
     inputs: MidiPortCollectionLike<MidiInputLike>;
     outputs: MidiPortCollectionLike<MidiOutputLike>;
+    addEventListener(type: "statechange", listener: (event: MidiPortStateChangeEventLike) => void): void;
+    removeEventListener(type: "statechange", listener: (event: MidiPortStateChangeEventLike) => void): void;
   }>;
+}
+
+export interface MidiPortStateChangeEventLike {
+  port: { id: string; state?: "connected" | "disconnected" };
 }
 
 export interface MidiAccessResult {
   inputs: MidiInputLike[];
   outputs: MidiOutputLike[];
+  subscribeStateChange(callback: (event: MidiPortStateChangeEventLike) => void): () => void;
 }
 
 export function createMidiAccessService(
@@ -29,7 +36,11 @@ export function createMidiAccessService(
 
       return {
         inputs: Array.from(access.inputs.values()),
-        outputs: Array.from(access.outputs.values())
+        outputs: Array.from(access.outputs.values()),
+        subscribeStateChange(callback) {
+          access.addEventListener("statechange", callback);
+          return () => access.removeEventListener("statechange", callback);
+        }
       };
     }
   };

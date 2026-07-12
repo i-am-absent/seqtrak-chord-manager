@@ -19,7 +19,15 @@ const midiMocks = vi.hoisted(() => ({
   seqtrakClientConstructor: vi.fn(),
   readPackFromSeqtrak: vi.fn(),
   writePackToSeqtrak: vi.fn(),
-  mockClient: {}
+  mockClient: {
+    readCurrentKey: vi.fn(),
+    subscribeParameter: vi.fn(),
+    dispose: vi.fn()
+  },
+  keyCallback: undefined as ((value: number) => void) | undefined,
+  keyUnsubscribe: vi.fn(),
+  stateCallback: undefined as ((event: { port: { id: string; state?: string } }) => void) | undefined,
+  stateUnsubscribe: vi.fn()
 }));
 
 vi.mock("./audio/previewEngine", () => ({
@@ -47,6 +55,19 @@ vi.mock("./midi/deviceWorkflow", () => ({
 describe("App", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    midiMocks.keyCallback = undefined;
+    midiMocks.stateCallback = undefined;
+    midiMocks.keyUnsubscribe.mockReset();
+    midiMocks.stateUnsubscribe.mockReset();
+    midiMocks.mockClient.dispose.mockReset();
+    midiMocks.mockClient.readCurrentKey.mockReset().mockImplementation(async () => {
+      midiMocks.keyCallback?.(1);
+      return 1;
+    });
+    midiMocks.mockClient.subscribeParameter.mockReset().mockImplementation((_address, callback) => {
+      midiMocks.keyCallback = callback;
+      return midiMocks.keyUnsubscribe;
+    });
     previewMocks.createPreviewEngine.mockReturnValue({
       playChord: previewMocks.playChord,
       playNote: previewMocks.playNote
@@ -57,7 +78,11 @@ describe("App", () => {
     midiMocks.createMidiAccessService.mockReturnValue({ requestAccess: midiMocks.requestAccess });
     midiMocks.requestAccess.mockResolvedValue({
       inputs: [{ id: "input-1", name: "SEQTRAK Input" }],
-      outputs: [{ id: "output-1", name: "SEQTRAK Output", send: vi.fn() }]
+      outputs: [{ id: "output-1", name: "SEQTRAK Output", send: vi.fn() }],
+      subscribeStateChange: vi.fn((callback) => {
+        midiMocks.stateCallback = callback;
+        return midiMocks.stateUnsubscribe;
+      })
     });
     midiMocks.seqtrakClientConstructor.mockReturnValue(midiMocks.mockClient);
     midiMocks.readPackFromSeqtrak.mockResolvedValue({
@@ -70,6 +95,58 @@ describe("App", () => {
       }
     });
     midiMocks.writePackToSeqtrak.mockResolvedValue({ verified: true });
+  });
+
+  it("follows live KEY changes while preserving relative notes and previews absolute notes", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.mockClient.readCurrentKey).toHaveBeenCalled());
+
+    expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true");
+    midiMocks.keyCallback?.(2);
+    await waitFor(() => expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true"));
+    await userEvent.click(screen.getByRole("button", { name: "D4" }));
+    expect(previewMocks.playNote).toHaveBeenCalledWith(62);
+    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "false");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /Apply variation/ })[0]);
+    const recommendation = previewMocks.playChord.mock.calls.at(-1)?.[0] as number[];
+    expect(recommendation).toBeDefined();
+    expect(previewMocks.playChord).toHaveBeenCalledWith(recommendation);
+  });
+
+  it("previews stored relative chords at the live KEY and rejects invalid KEY values", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.mockClient.readCurrentKey).toHaveBeenCalled());
+    midiMocks.keyCallback?.(2);
+    midiMocks.keyCallback?.(12);
+    await waitFor(() => expect(screen.getByText("SEQTRAK KEY must be an integer from 0 to 11.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("releases the previous client on reconnect and selected-port disconnect", async () => {
+    const view = renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.stateCallback).toBeDefined());
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(1));
+    midiMocks.stateCallback?.({ port: { id: "input-1", state: "disconnected" } });
+    await waitFor(() => expect(screen.getByText("Status: disconnected")).toBeInTheDocument());
+    expect(midiMocks.keyUnsubscribe).toHaveBeenCalledTimes(2);
+    expect(midiMocks.stateUnsubscribe).toHaveBeenCalledTimes(2);
+    expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+
+  it("releases a connected client on unmount", async () => {
+    const view = renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(midiMocks.mockClient.readCurrentKey).toHaveBeenCalled());
+    view.unmount();
+    expect(midiMocks.keyUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(midiMocks.stateUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("renders the local editor and changes selected chord notes", async () => {
