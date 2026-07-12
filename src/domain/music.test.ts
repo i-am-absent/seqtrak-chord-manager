@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  absoluteToRelativeNote,
+  assertSeqtrakKeyOffset,
+  isAbsoluteNoteSelectable,
+  relativeToAbsoluteNote,
   SEQTRAK_MAX_CHORD_NOTE,
   SEQTRAK_MIN_CHORD_NOTE,
   createDefaultPack,
@@ -11,6 +15,29 @@ import {
 } from "./music";
 
 describe("music domain", () => {
+  it.each([0, 1, 11])("converts every relative note with KEY %i", (keyOffset) => {
+    expect(relativeToAbsoluteNote(0x24, keyOffset)).toBe(0x24 + keyOffset);
+    expect(relativeToAbsoluteNote(0x3c, keyOffset)).toBe(0x3c + keyOffset);
+    expect(relativeToAbsoluteNote(0x60, keyOffset)).toBe(0x60 + keyOffset);
+    expect(absoluteToRelativeNote(0x3c + keyOffset, keyOffset)).toBe(0x3c);
+  });
+
+  it("validates KEY and the derived selectable range", () => {
+    expect(() => assertSeqtrakKeyOffset(0)).not.toThrow();
+    expect(() => assertSeqtrakKeyOffset(11)).not.toThrow();
+    expect(() => assertSeqtrakKeyOffset(12)).toThrow("SEQTRAK KEY must be an integer from 0 to 11.");
+    expect(isAbsoluteNoteSelectable(SEQTRAK_MIN_CHORD_NOTE + 11, 11)).toBe(true);
+    expect(isAbsoluteNoteSelectable(SEQTRAK_MAX_CHORD_NOTE + 11, 11)).toBe(true);
+    expect(isAbsoluteNoteSelectable(SEQTRAK_MIN_CHORD_NOTE + 10, 11)).toBe(false);
+  });
+
+  it("validates stored notes against the configurable SEQTRAK-relative range", () => {
+    expect(validateChordNotes([SEQTRAK_MIN_CHORD_NOTE, SEQTRAK_MAX_CHORD_NOTE])).toEqual([]);
+    expect(validateChordNotes([SEQTRAK_MIN_CHORD_NOTE - 1])).toContain(
+      `Note ${SEQTRAK_MIN_CHORD_NOTE - 1} is outside the SEQTRAK chord range.`
+    );
+  });
+
   it("names MIDI notes using octave numbers", () => {
     expect(midiNoteName(21)).toBe("A0");
     expect(midiNoteName(60)).toBe("C4");
@@ -48,7 +75,7 @@ describe("music domain", () => {
     expect(validateChordNotes([60, 64, 67, 71, 74])).toContain(
       "Chord must contain no more than four notes."
     );
-    expect(validateChordNotes([20])).toContain("Note 20 is outside the 88-key range.");
+    expect(validateChordNotes([20])).toContain("Note 20 is outside the SEQTRAK chord range.");
     expect(validateChordNotes([60, 60])).toContain("Chord notes must be unique.");
   });
 

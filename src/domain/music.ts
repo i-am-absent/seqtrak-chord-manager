@@ -3,6 +3,27 @@ export const MAX_88_KEY_MIDI_NOTE = 108;
 export const SEQTRAK_MIN_CHORD_NOTE = 0x24;
 export const SEQTRAK_MAX_CHORD_NOTE = 0x60;
 
+export function assertSeqtrakKeyOffset(value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 11) {
+    throw new Error("SEQTRAK KEY must be an integer from 0 to 11.");
+  }
+}
+
+export function relativeToAbsoluteNote(note: number, keyOffset: number): number {
+  assertSeqtrakKeyOffset(keyOffset);
+  return note + keyOffset;
+}
+
+export function absoluteToRelativeNote(note: number, keyOffset: number): number {
+  assertSeqtrakKeyOffset(keyOffset);
+  return note - keyOffset;
+}
+
+export function isAbsoluteNoteSelectable(note: number, keyOffset: number): boolean {
+  const relative = absoluteToRelativeNote(note, keyOffset);
+  return relative >= SEQTRAK_MIN_CHORD_NOTE && relative <= SEQTRAK_MAX_CHORD_NOTE;
+}
+
 export const chromaticKeys = [
   "C",
   "C#",
@@ -91,8 +112,8 @@ export function validateChordNotes(notes: number[]): string[] {
       continue;
     }
 
-    if (note < MIN_88_KEY_MIDI_NOTE || note > MAX_88_KEY_MIDI_NOTE) {
-      errors.push(`Note ${note} is outside the 88-key range.`);
+    if (note < SEQTRAK_MIN_CHORD_NOTE || note > SEQTRAK_MAX_CHORD_NOTE) {
+      errors.push(`Note ${note} is outside the SEQTRAK chord range.`);
     }
   }
 

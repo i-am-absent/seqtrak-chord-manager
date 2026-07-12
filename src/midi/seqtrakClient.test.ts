@@ -97,7 +97,7 @@ describe("SeqtrakClient", () => {
     };
 
     await expect(client.writeChordPack({ trackIndex: 7, scale: 0, pack: invalid })).rejects.toThrow(
-      "Note 20 is outside the 88-key range."
+      "Note 20 is outside the SEQTRAK chord range."
     );
     expect(output.sentMessages).toHaveLength(0);
   });

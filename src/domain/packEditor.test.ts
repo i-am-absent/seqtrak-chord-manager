@@ -50,7 +50,7 @@ describe("pack editor reducer", () => {
     const next = editorReducer(state, { type: "toggleNote", note: 109 });
 
     expect(next.pack).toBe(state.pack);
-    expect(next.message).toBe("Note 109 is outside the 88-key range.");
+    expect(next.message).toBe("Note 109 is outside the SEQTRAK chord range.");
   });
 
   it("does not allow removing the final remaining note", () => {
