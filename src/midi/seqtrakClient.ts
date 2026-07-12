@@ -1,4 +1,5 @@
 import {
+  assertSeqtrakKeyOffset,
   createDefaultPack,
   midiNoteName,
   validatePack,
@@ -6,15 +7,16 @@ import {
   type ChordSlot,
   type SeqtrakTrackIndex
 } from "../domain/music";
-import type { MidiInputLike, MidiMessageEventLike, MidiOutputLike } from "./midiTypes";
+import type { MidiInputLike, MidiOutputLike } from "./midiTypes";
+import { ParameterChangeReceiver } from "./parameterChangeReceiver";
 import {
   codeValueToNote,
-  decodeParameterChange,
   decodeSoundName,
   encodeParameterChange,
   encodeParameterRequest,
   encodeTrackChordAddress,
   encodeTrackSoundNameAddress,
+  keyAddress,
   noteToCodeValue,
   scaleAddress,
   type SysexAddress
@@ -43,13 +45,21 @@ const EMPTY_SLOT_FALLBACK_NOTE = 60;
 
 export class SeqtrakClient {
   private requestTimeoutMs: number;
+  private receiver: ParameterChangeReceiver;
 
   constructor(
-    private input: MidiInputLike,
+    input: MidiInputLike,
     private output: MidiOutputLike,
     options: SeqtrakClientOptions = {}
   ) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 800;
+    this.receiver = new ParameterChangeReceiver(input);
+  }
+
+  async readCurrentKey(): Promise<number> {
+    const value = await this.requestParameter(keyAddress());
+    assertSeqtrakKeyOffset(value);
+    return value;
   }
 
   async readCurrentScale(): Promise<number> {
@@ -73,6 +83,7 @@ export class SeqtrakClient {
   }
 
   async readChordPack(input: ReadChordPackInput): Promise<ChordPack> {
+    await this.readCurrentKey();
     const basePack = createDefaultPack();
     const chords: ChordSlot[] = [];
 
@@ -106,6 +117,7 @@ export class SeqtrakClient {
   }
 
   async writeChordPack(input: WriteChordPackInput): Promise<void> {
+    await this.readCurrentKey();
     const validationErrors = validatePack(input.pack);
 
     if (validationErrors.length > 0) {
@@ -141,38 +153,24 @@ export class SeqtrakClient {
     }
   }
 
-  private requestParameter(address: SysexAddress): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const listener = (event: MidiMessageEventLike) => {
-        const decoded = decodeParameterChange(event.data);
+  subscribeParameter(address: SysexAddress, callback: (value: number) => void): () => void {
+    return this.receiver.subscribe(address, callback);
+  }
 
-        if (!decoded || !sameAddress(decoded.address, address)) {
-          return;
-        }
+  dispose(): void {
+    this.receiver.dispose();
+  }
 
-        cleanup();
-        resolve(decoded.value);
-      };
-
-      const timeout = globalThis.setTimeout(() => {
-        cleanup();
-        reject(new Error("Timed out waiting for SEQTRAK response."));
-      }, this.requestTimeoutMs);
-
-      const cleanup = () => {
-        globalThis.clearTimeout(timeout);
-        this.input.removeEventListener("midimessage", listener);
-      };
-
-      this.input.addEventListener("midimessage", listener);
-
-      try {
-        this.output.send(encodeParameterRequest(address));
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
-    });
+  private async requestParameter(address: SysexAddress): Promise<number> {
+    const waiting = this.receiver.prepareWait(address, this.requestTimeoutMs);
+    try {
+      this.output.send(encodeParameterRequest(address));
+    } catch (error) {
+      waiting.cancel();
+      void waiting.promise.catch(() => undefined);
+      throw error;
+    }
+    return waiting.promise;
   }
 }
 
@@ -184,8 +182,4 @@ function createChordSlot(slotIndex: number, notes: number[]): ChordSlot {
     notes: visibleNotes,
     displayName: notes.length > 0 ? visibleNotes.map(midiNoteName).join(" ") : "Empty"
   };
-}
-
-function sameAddress(left: SysexAddress, right: SysexAddress): boolean {
-  return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }
