@@ -1,5 +1,44 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMidiAccessService } from "./midiAccessService";
+import { createMidiAccessService, midiPortLabel, resolveMidiPortId } from "./midiAccessService";
+
+it("prefers the first SEQTRAK-prefixed port over earlier loopbacks", () => {
+  const ports = [
+    { id: "loop-a", name: "Default App Loopback (A)" },
+    { id: "loop-b", name: "Default App Loopback (B)" },
+    { id: "seqtrak-1", name: "SEQTRAK-1" }
+  ];
+  expect(resolveMidiPortId(ports, null)).toBe("seqtrak-1");
+});
+
+it("matches the SEQTRAK prefix without case sensitivity", () => {
+  expect(resolveMidiPortId([{ id: "device", name: "seqtrak-2" }], null)).toBe("device");
+});
+
+it("preserves a valid manual choice and replaces a stale choice", () => {
+  const ports = [
+    { id: "manual", name: "Custom MIDI" },
+    { id: "auto", name: "SEQTRAK-1" }
+  ];
+  expect(resolveMidiPortId(ports, "manual")).toBe("manual");
+  expect(resolveMidiPortId(ports, "missing")).toBe("auto");
+});
+
+it("does not fall back to the first arbitrary or unnamed port", () => {
+  expect(resolveMidiPortId([
+    { id: "loop", name: "Loopback" },
+    { id: "unnamed", name: null }
+  ], null)).toBeNull();
+});
+
+it("uses IDs to distinguish duplicate names and labels unnamed ports", () => {
+  const ports = [
+    { id: "same-1", name: "SEQTRAK-1" },
+    { id: "same-2", name: "SEQTRAK-1" }
+  ];
+  expect(resolveMidiPortId(ports, "same-2")).toBe("same-2");
+  expect(midiPortLabel({ id: "x", name: null }, "input")).toBe("Unnamed MIDI input");
+  expect(midiPortLabel({ id: "x", name: null }, "output")).toBe("Unnamed MIDI output");
+});
 
 describe("midiAccessService", () => {
   it("reports unsupported browsers", async () => {

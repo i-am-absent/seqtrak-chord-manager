@@ -6,7 +6,7 @@ export interface MidiMessageEventLike {
 
 export interface MidiInputLike {
   id: string;
-  name: string;
+  name: string | null;
   state?: MidiPortConnectionState;
   addEventListener(type: "midimessage", listener: (event: MidiMessageEventLike) => void): void;
   removeEventListener(type: "midimessage", listener: (event: MidiMessageEventLike) => void): void;
@@ -14,7 +14,7 @@ export interface MidiInputLike {
 
 export interface MidiOutputLike {
   id: string;
-  name: string;
+  name: string | null;
   state?: MidiPortConnectionState;
   send(data: number[] | Uint8Array): void;
 }

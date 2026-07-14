@@ -1,5 +1,27 @@
 import type { MidiInputLike, MidiOutputLike } from "./midiTypes";
 
+export interface MidiPortIdentity {
+  id: string;
+  name: string | null;
+}
+
+export function resolveMidiPortId<T extends MidiPortIdentity>(
+  ports: readonly T[],
+  selectedId: string | null
+): string | null {
+  if (selectedId && ports.some((port) => port.id === selectedId)) {
+    return selectedId;
+  }
+  return ports.find((port) => port.name?.toUpperCase().startsWith("SEQTRAK"))?.id ?? null;
+}
+
+export function midiPortLabel(
+  port: MidiPortIdentity,
+  direction: "input" | "output"
+): string {
+  return port.name || `Unnamed MIDI ${direction}`;
+}
+
 interface MidiPortCollectionLike<T> {
   values(): IterableIterator<T>;
 }
