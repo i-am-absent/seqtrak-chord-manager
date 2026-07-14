@@ -13,7 +13,11 @@ import {
   seqtrakTracks,
   type SeqtrakTrackIndex
 } from "./domain/music";
-import { createMidiAccessService } from "./midi/midiAccessService";
+import {
+  createMidiAccessService,
+  midiPortLabel,
+  resolveMidiPortId
+} from "./midi/midiAccessService";
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
 import { keyAddress } from "./midi/seqtrakSysex";
@@ -24,6 +28,8 @@ export default function App() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("disconnected");
   const [midiInputs, setMidiInputs] = useState<MidiInputLike[]>([]);
   const [midiOutputs, setMidiOutputs] = useState<MidiOutputLike[]>([]);
+  const [selectedInputId, setSelectedInputId] = useState("");
+  const [selectedOutputId, setSelectedOutputId] = useState("");
   const [selectedTrackIndex, setSelectedTrackIndex] = useState<SeqtrakTrackIndex>(7);
   const [currentScale, setCurrentScale] = useState<number | null>(null);
   const [seqtrakKeyOffset, setSeqtrakKeyOffset] = useState(0);
@@ -59,6 +65,8 @@ export default function App() {
 
   const handleConnect = useCallback(async () => {
     let generation = 0;
+    let input: MidiInputLike | undefined;
+    let output: MidiOutputLike | undefined;
     try {
       setDeviceStatus("busy");
       setCurrentScale(null);
@@ -71,21 +79,35 @@ export default function App() {
       setMidiInputs(access.inputs);
       setMidiOutputs(access.outputs);
 
-      const input = access.inputs[0];
-      const output = access.outputs[0];
+      const inputId = resolveMidiPortId(access.inputs, selectedInputId || null);
+      const outputId = resolveMidiPortId(access.outputs, selectedOutputId || null);
+      setSelectedInputId(inputId ?? "");
+      setSelectedOutputId(outputId ?? "");
 
-      if (!input || !output) {
-        releaseClient();
-        setCurrentScale(null);
-        setDeviceStatus("error");
+      if (!inputId || !outputId) {
+        setDeviceStatus("disconnected");
         dispatch({
           type: "setMessage",
-          message: "SEQTRAK MIDI input/output ports were not found."
+          message: "Select MIDI input and output ports, then connect again."
         });
         return;
       }
 
-      const client = new SeqtrakClient(input, output);
+      input = access.inputs.find((port) => port.id === inputId);
+      output = access.outputs.find((port) => port.id === outputId);
+
+      if (!input || !output) {
+        setDeviceStatus("disconnected");
+        dispatch({
+          type: "setMessage",
+          message: "Select MIDI input and output ports, then connect again."
+        });
+        return;
+      }
+
+      const connectedInput = input;
+      const connectedOutput = output;
+      const client = new SeqtrakClient(connectedInput, connectedOutput);
       if (generation !== connectionGenerationRef.current) {
         client.dispose();
         return;
@@ -111,8 +133,14 @@ export default function App() {
       stateUnsubscribeRef.current = access.subscribeStateChange((event) => {
         if (
           event.port.state === "disconnected" &&
-          (event.port.id === input.id || event.port.id === output.id)
+          (event.port.id === connectedInput.id || event.port.id === connectedOutput.id)
         ) {
+          if (event.port.id === connectedInput.id) {
+            setSelectedInputId("");
+          }
+          if (event.port.id === connectedOutput.id) {
+            setSelectedOutputId("");
+          }
           releaseClient();
           setCurrentScale(null);
           setDeviceStatus("disconnected");
@@ -133,11 +161,29 @@ export default function App() {
       releaseClient();
       setCurrentScale(null);
       setDeviceStatus(error instanceof Error && error.message.includes("Web MIDI") ? "unsupported" : "error");
+      const detail = error instanceof Error ? error.message : "Failed to connect SEQTRAK.";
       dispatch({
         type: "setMessage",
-        message: error instanceof Error ? error.message : "Failed to connect SEQTRAK."
+        message: input && output
+          ? `MIDI connection failed (Input: ${midiPortLabel(input, "input")}; Output: ${midiPortLabel(output, "output")}): ${detail}`
+          : detail
       });
     }
+  }, [releaseClient, selectedInputId, selectedOutputId]);
+
+  const handlePortChange = useCallback((direction: "input" | "output", id: string) => {
+    if (direction === "input") {
+      setSelectedInputId(id);
+    } else {
+      setSelectedOutputId(id);
+    }
+    releaseClient();
+    setCurrentScale(null);
+    setDeviceStatus("disconnected");
+    dispatch({
+      type: "setMessage",
+      message: "MIDI port selection changed. Connect again."
+    });
   }, [releaseClient]);
 
   const handleTrackChange = useCallback((trackIndex: SeqtrakTrackIndex) => {
@@ -234,16 +280,16 @@ export default function App() {
           status={deviceStatus}
           inputs={midiInputs}
           outputs={midiOutputs}
-          selectedInputId=""
-          selectedOutputId=""
+          selectedInputId={selectedInputId}
+          selectedOutputId={selectedOutputId}
           selectedTrackIndex={selectedTrackIndex}
           currentScale={currentScale}
           canWrite={currentScale !== null}
           onConnect={handleConnect}
           onRead={handleRead}
           onWrite={handleWrite}
-          onInputChange={() => {}}
-          onOutputChange={() => {}}
+          onInputChange={(id) => handlePortChange("input", id)}
+          onOutputChange={(id) => handlePortChange("output", id)}
           onTrackChange={handleTrackChange}
         />
 

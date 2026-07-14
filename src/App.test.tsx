@@ -40,11 +40,13 @@ vi.mock("./audio/previewEngine", () => ({
   createPreviewEngine: previewMocks.createPreviewEngine
 }));
 
-vi.mock("./midi/midiAccessService", () => ({
-  createMidiAccessService: midiMocks.createMidiAccessService,
-  midiPortLabel: (port: { name: string | null }, direction: "input" | "output") =>
-    port.name || `Unnamed MIDI ${direction}`
-}));
+vi.mock("./midi/midiAccessService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./midi/midiAccessService")>();
+  return {
+    ...actual,
+    createMidiAccessService: midiMocks.createMidiAccessService
+  };
+});
 
 vi.mock("./midi/seqtrakClient", () => ({
   SeqtrakClient: class MockSeqtrakClient {
@@ -136,6 +138,138 @@ describe("App", () => {
     act(() => midiMocks.keyCallback?.(2));
     await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
     expect(previewMocks.playChord).toHaveBeenCalledWith([64, 67, 71]);
+  });
+
+  it("automatically selects and connects the SEQTRAK port pair", async () => {
+    const seqtrakInput = { id: "seqtrak-input", name: "SEQTRAK-1" };
+    const seqtrakOutput = { id: "seqtrak-output", name: "SEQTRAK-1", send: vi.fn() };
+    midiMocks.requestAccess.mockResolvedValueOnce({
+      inputs: [
+        { id: "loopback-input-a", name: "Loopback A" },
+        { id: "loopback-input-b", name: "Loopback B" },
+        seqtrakInput
+      ],
+      outputs: [
+        { id: "loopback-output-a", name: "Loopback A", send: vi.fn() },
+        { id: "loopback-output-b", name: "Loopback B", send: vi.fn() },
+        seqtrakOutput
+      ],
+      subscribeStateChange: vi.fn((callback) => {
+        midiMocks.stateCallback = callback;
+        return midiMocks.stateUnsubscribe;
+      })
+    });
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    expect(screen.getByLabelText("Input Port")).toHaveValue("seqtrak-input");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("seqtrak-output");
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "seqtrak-input" }),
+      expect.objectContaining({ id: "seqtrak-output" })
+    );
+  });
+
+  it("requires manual selection when no SEQTRAK ports match", async () => {
+    midiMocks.requestAccess.mockResolvedValueOnce({
+      inputs: [{ id: "loopback-input", name: "Loopback Input" }],
+      outputs: [{ id: "loopback-output", name: "Loopback Output", send: vi.fn() }],
+      subscribeStateChange: vi.fn()
+    });
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+
+    await waitFor(() => expect(screen.getByText("Status: disconnected")).toBeInTheDocument());
+    expect(screen.getByText("Select MIDI input and output ports, then connect again.")).toBeInTheDocument();
+    expect(midiMocks.seqtrakClientConstructor).not.toHaveBeenCalled();
+  });
+
+  it("releases the client on manual selection and reconnects with the exact manual pair", async () => {
+    const loopbackInput = { id: "loopback-input", name: "Loopback Input" };
+    const seqtrakInput = { id: "seqtrak-input", name: "SEQTRAK-1" };
+    const loopbackOutput = { id: "loopback-output", name: "Loopback Output", send: vi.fn() };
+    const seqtrakOutput = { id: "seqtrak-output", name: "SEQTRAK-1", send: vi.fn() };
+    midiMocks.requestAccess.mockResolvedValue({
+      inputs: [loopbackInput, seqtrakInput],
+      outputs: [loopbackOutput, seqtrakOutput],
+      subscribeStateChange: vi.fn((callback) => {
+        midiMocks.stateCallback = callback;
+        return midiMocks.stateUnsubscribe;
+      })
+    });
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    await userEvent.selectOptions(screen.getByLabelText("Input Port"), "loopback-input");
+
+    expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(1);
+    expect(midiMocks.keyUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(midiMocks.stateUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "C4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
+    expect(screen.getByText("MIDI port selection changed. Connect again.")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Output Port"), "loopback-output");
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenLastCalledWith(loopbackInput, loopbackOutput);
+    expect(screen.getByLabelText("Input Port")).toHaveValue("loopback-input");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("loopback-output");
+  });
+
+  it("clears only a selected input that disconnects", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    act(() => midiMocks.stateCallback?.({ port: { id: "input-1", state: "disconnected" } }));
+
+    expect(screen.getByLabelText("Input Port")).toHaveValue("");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
+  });
+
+  it("clears only a selected output that disconnects", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    act(() => midiMocks.stateCallback?.({ port: { id: "output-1", state: "disconnected" } }));
+
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("");
+    expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
+  });
+
+  it("keeps selections and status when an unrelated port disconnects", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    act(() => midiMocks.stateCallback?.({ port: { id: "other", state: "disconnected" } }));
+
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+  });
+
+  it("includes selected port labels in an initial KEY read failure", async () => {
+    midiMocks.mockClient.readCurrentKey.mockRejectedValueOnce(
+      new Error("Timed out waiting for SEQTRAK response.")
+    );
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+
+    await waitFor(() => expect(screen.getByText(
+      "MIDI connection failed (Input: SEQTRAK Input; Output: SEQTRAK Output): Timed out waiting for SEQTRAK response."
+    )).toBeInTheDocument());
   });
 
   it("does not complete a connection after unmount while MIDI access is pending", async () => {
