@@ -114,6 +114,7 @@ select {
   cursor: not-allowed;
 }
 
+.device-port-select,
 .device-track-select {
   color: #4b5565;
   display: grid;

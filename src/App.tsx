@@ -234,12 +234,16 @@ export default function App() {
           status={deviceStatus}
           inputs={midiInputs}
           outputs={midiOutputs}
+          selectedInputId=""
+          selectedOutputId=""
           selectedTrackIndex={selectedTrackIndex}
           currentScale={currentScale}
           canWrite={currentScale !== null}
           onConnect={handleConnect}
           onRead={handleRead}
           onWrite={handleWrite}
+          onInputChange={() => {}}
+          onOutputChange={() => {}}
           onTrackChange={handleTrackChange}
         />
 

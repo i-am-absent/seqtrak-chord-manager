@@ -41,7 +41,9 @@ vi.mock("./audio/previewEngine", () => ({
 }));
 
 vi.mock("./midi/midiAccessService", () => ({
-  createMidiAccessService: midiMocks.createMidiAccessService
+  createMidiAccessService: midiMocks.createMidiAccessService,
+  midiPortLabel: (port: { name: string | null }, direction: "input" | "output") =>
+    port.name || `Unnamed MIDI ${direction}`
 }));
 
 vi.mock("./midi/seqtrakClient", () => ({
