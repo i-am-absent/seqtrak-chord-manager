@@ -47,3 +47,11 @@
 5. Verify that absolute keys outside `0x24 + KEY .. 0x60 + KEY` are disabled.
 6. Disconnect SEQTRAK and verify that the same relative chord pack displays and previews at KEY `0`.
 7. Record any observed device range different from `0x24..0x60`. Change only the centralized range constants in a separate reviewed change.
+
+## MIDI port selection
+
+1. With `Default App Loopback (A)`, `Default App Loopback (B)`, and `SEQTRAK-1` visible in both directions, click `Connect SEQTRAK` once. Verify that both selectors choose `SEQTRAK-1` and the status becomes `connected`.
+2. Select `Default App Loopback (A)` for input. Verify that the app disconnects, KEY returns to `0`, SCALE becomes `unknown`, and the reconnect instruction appears.
+3. Select `Default App Loopback (B)` for output, click `Connect SEQTRAK`, and verify that the expected timeout names both chosen ports.
+4. Restore `SEQTRAK-1` for both directions, reconnect, and verify that KEY and `Read from SEQTRAK` work.
+5. Disconnect the selected input, reconnect it, and verify that only the missing direction is cleared and reselected.
