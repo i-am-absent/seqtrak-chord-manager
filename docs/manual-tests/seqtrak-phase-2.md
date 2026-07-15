@@ -50,7 +50,7 @@
 
 ## MIDI port selection
 
-1. With `Default App Loopback (A)`, `Default App Loopback (B)`, and `SEQTRAK-1` visible in both directions, click `Connect SEQTRAK` once. Verify that both selectors choose `SEQTRAK-1` and the status becomes `connected`.
+1. With `Default App Loopback (A)`, `Default App Loopback (B)`, and `SEQTRAK-1` visible in both directions, verify that `Default App Loopback (A)` and `Default App Loopback (B)` appear before `SEQTRAK-1` in both the Input and Output selectors. Click `Connect SEQTRAK` once. Verify that both selectors choose `SEQTRAK-1` and the status becomes `connected`.
 2. Select `Default App Loopback (A)` for input. Verify that the app disconnects, KEY returns to `0`, SCALE becomes `unknown`, and the reconnect instruction appears.
 3. Select `Default App Loopback (B)` for output, click `Connect SEQTRAK`, and verify that the expected timeout names both chosen ports.
 4. Restore `SEQTRAK-1` for both directions, reconnect, and verify that KEY and `Read from SEQTRAK` work.
