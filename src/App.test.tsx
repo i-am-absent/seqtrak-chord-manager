@@ -203,6 +203,7 @@ describe("App", () => {
     renderApp(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
     await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledTimes(1);
 
     await userEvent.selectOptions(screen.getByLabelText("Input Port"), "loopback-input");
 
@@ -215,9 +216,12 @@ describe("App", () => {
     expect(screen.getByText("MIDI port selection changed. Connect again.")).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText("Output Port"), "loopback-output");
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledTimes(1);
+
     await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
     await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
 
+    expect(midiMocks.seqtrakClientConstructor).toHaveBeenCalledTimes(2);
     expect(midiMocks.seqtrakClientConstructor).toHaveBeenLastCalledWith(loopbackInput, loopbackOutput);
     expect(screen.getByLabelText("Input Port")).toHaveValue("loopback-input");
     expect(screen.getByLabelText("Output Port")).toHaveValue("loopback-output");

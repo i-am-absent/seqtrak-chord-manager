@@ -9,7 +9,7 @@ export function resolveMidiPortId<T extends MidiPortIdentity>(
   ports: readonly T[],
   selectedId: string | null
 ): string | null {
-  if (selectedId && ports.some((port) => port.id === selectedId)) {
+  if (selectedId !== null && ports.some((port) => port.id === selectedId)) {
     return selectedId;
   }
   return ports.find((port) => port.name?.toUpperCase().startsWith("SEQTRAK"))?.id ?? null;

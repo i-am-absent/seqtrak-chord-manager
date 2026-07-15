@@ -14,6 +14,15 @@ it("matches the SEQTRAK prefix without case sensitivity", () => {
   expect(resolveMidiPortId([{ id: "device", name: "seqtrak-2" }], null)).toBe("device");
 });
 
+it("uses the first matching SEQTRAK port when names vary by case", () => {
+  const ports = [
+    { id: "first", name: "seqtrak-1" },
+    { id: "second", name: "SeQtRaK-2" }
+  ];
+
+  expect(resolveMidiPortId(ports, null)).toBe("first");
+});
+
 it("preserves a valid manual choice and replaces a stale choice", () => {
   const ports = [
     { id: "manual", name: "Custom MIDI" },
@@ -21,6 +30,15 @@ it("preserves a valid manual choice and replaces a stale choice", () => {
   ];
   expect(resolveMidiPortId(ports, "manual")).toBe("manual");
   expect(resolveMidiPortId(ports, "missing")).toBe("auto");
+});
+
+it("preserves a valid empty-string port ID", () => {
+  const ports = [
+    { id: "", name: "Custom MIDI" },
+    { id: "auto", name: "SEQTRAK-1" }
+  ];
+
+  expect(resolveMidiPortId(ports, "")).toBe("");
 });
 
 it("does not fall back to the first arbitrary or unnamed port", () => {
