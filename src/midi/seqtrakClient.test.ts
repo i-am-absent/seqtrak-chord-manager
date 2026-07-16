@@ -24,6 +24,17 @@ describe("SeqtrakClient", () => {
     client.dispose();
   });
 
+  it("decodes the observed minimum current key wire value", async () => {
+    const input = new MockMidiInput();
+    const output = new MockMidiOutput(() => {
+      input.emit(encodeParameterChange(keyAddress(), 0x40));
+    });
+    const client = new SeqtrakClient(input, output);
+
+    await expect(client.readCurrentKey()).resolves.toBe(0);
+    client.dispose();
+  });
+
   it("rejects an invalid current key wire value", async () => {
     const input = new MockMidiInput();
     const output = new MockMidiOutput(() => {
@@ -243,6 +254,24 @@ describe("SeqtrakClient", () => {
       "Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75."
     ]);
     expect(rawKeys).toEqual([0x42, 0x3f]);
+    client.dispose();
+  });
+
+  it("propagates live KEY callback errors without routing them to onError", () => {
+    const input = new MockMidiInput();
+    const client = new SeqtrakClient(input, new MockMidiOutput());
+    const callbackError = new Error("Consumer callback failed.");
+    const onError = vi.fn();
+
+    client.subscribeCurrentKey(
+      () => {
+        throw callbackError;
+      },
+      onError
+    );
+
+    expect(() => input.emit(encodeParameterChange(keyAddress(), 0x40))).toThrow(callbackError);
+    expect(onError).not.toHaveBeenCalled();
     client.dispose();
   });
 });

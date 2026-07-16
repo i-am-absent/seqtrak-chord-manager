@@ -156,11 +156,16 @@ export class SeqtrakClient {
     onError: (error: Error) => void
   ): () => void {
     return this.receiver.subscribe(keyAddress(), (wireValue) => {
+      let decodedValue: number;
+
       try {
-        callback(decodeKeyWireValue(wireValue));
+        decodedValue = decodeKeyWireValue(wireValue);
       } catch (error) {
         onError(error instanceof Error ? error : new Error("Invalid SEQTRAK KEY wire value."));
+        return;
       }
+
+      callback(decodedValue);
     });
   }
 
