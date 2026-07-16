@@ -1,5 +1,4 @@
 import {
-  assertSeqtrakKeyOffset,
   createDefaultPack,
   midiNoteName,
   validatePack,
@@ -11,6 +10,7 @@ import type { MidiInputLike, MidiOutputLike } from "./midiTypes";
 import { ParameterChangeReceiver } from "./parameterChangeReceiver";
 import {
   codeValueToNote,
+  decodeKeyWireValue,
   decodeSoundName,
   encodeParameterChange,
   encodeParameterRequest,
@@ -57,9 +57,7 @@ export class SeqtrakClient {
   }
 
   async readCurrentKey(): Promise<number> {
-    const value = await this.requestParameter(keyAddress());
-    assertSeqtrakKeyOffset(value);
-    return value;
+    return decodeKeyWireValue(await this.requestParameter(keyAddress()));
   }
 
   async readCurrentScale(): Promise<number> {
@@ -151,6 +149,19 @@ export class SeqtrakClient {
     for (const message of messages) {
       this.output.send(message);
     }
+  }
+
+  subscribeCurrentKey(
+    callback: (value: number) => void,
+    onError: (error: Error) => void
+  ): () => void {
+    return this.receiver.subscribe(keyAddress(), (wireValue) => {
+      try {
+        callback(decodeKeyWireValue(wireValue));
+      } catch (error) {
+        onError(error instanceof Error ? error : new Error("Invalid SEQTRAK KEY wire value."));
+      }
+    });
   }
 
   subscribeParameter(address: SysexAddress, callback: (value: number) => void): () => void {

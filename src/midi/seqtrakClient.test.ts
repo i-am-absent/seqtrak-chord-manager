@@ -13,10 +13,10 @@ import { SeqtrakClient } from "./seqtrakClient";
 import type { MidiOutputLike } from "./midiTypes";
 
 describe("SeqtrakClient", () => {
-  it("reads and validates the current key", async () => {
+  it("reads and decodes the current key", async () => {
     const input = new MockMidiInput();
     const output = new MockMidiOutput(() => {
-      input.emit(encodeParameterChange(keyAddress(), 11));
+      input.emit(encodeParameterChange(keyAddress(), 0x4b));
     });
     const client = new SeqtrakClient(input, output);
 
@@ -24,14 +24,16 @@ describe("SeqtrakClient", () => {
     client.dispose();
   });
 
-  it("rejects an invalid current key", async () => {
+  it("rejects an invalid current key wire value", async () => {
     const input = new MockMidiInput();
     const output = new MockMidiOutput(() => {
-      input.emit(encodeParameterChange(keyAddress(), 12));
+      input.emit(encodeParameterChange(keyAddress(), 0x3f));
     });
     const client = new SeqtrakClient(input, output);
 
-    await expect(client.readCurrentKey()).rejects.toThrow("SEQTRAK KEY must be an integer from 0 to 11.");
+    await expect(client.readCurrentKey()).rejects.toThrow(
+      "Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75."
+    );
     client.dispose();
   });
 
@@ -76,7 +78,7 @@ describe("SeqtrakClient", () => {
     const output = new MockMidiOutput((sent) => {
       const address = [sent[6], sent[7], sent[8]] as const;
       if (sent.toString() === encodeParameterRequest(keyAddress()).toString()) {
-        input.emit(encodeParameterChange(keyAddress(), 1));
+        input.emit(encodeParameterChange(keyAddress(), 0x41));
         return;
       }
       const value = sent[8] === 0x00 ? 0x3c : sent[8] === 0x01 ? 0x40 : sent[8] === 0x02 ? 0x43 : 0x00;
@@ -99,7 +101,7 @@ describe("SeqtrakClient", () => {
     const input = new MockMidiInput();
     const output = new MockMidiOutput((sent) => {
       if (sent.toString() === encodeParameterRequest(keyAddress()).toString()) {
-        input.emit(encodeParameterChange(keyAddress(), 1));
+        input.emit(encodeParameterChange(keyAddress(), 0x41));
       }
     });
     const client = new SeqtrakClient(input, output);
@@ -129,7 +131,7 @@ describe("SeqtrakClient", () => {
   it("rejects invalid packs before sending any chord parameters", async () => {
     const input = new MockMidiInput();
     const output = new MockMidiOutput(() => {
-      input.emit(encodeParameterChange(keyAddress(), 1));
+      input.emit(encodeParameterChange(keyAddress(), 0x41));
     });
     const client = new SeqtrakClient(input, output);
     const invalid = {
@@ -218,5 +220,29 @@ describe("SeqtrakClient", () => {
     expect(input.listenerCount).toBe(1);
     client.dispose();
     expect(input.listenerCount).toBe(0);
+  });
+
+  it("decodes live KEY changes without changing generic raw subscriptions", () => {
+    const input = new MockMidiInput();
+    const client = new SeqtrakClient(input, new MockMidiOutput());
+    const keys: number[] = [];
+    const errors: Error[] = [];
+    const rawKeys: number[] = [];
+
+    client.subscribeCurrentKey(
+      (value) => keys.push(value),
+      (error) => errors.push(error)
+    );
+    client.subscribeParameter(keyAddress(), (value) => rawKeys.push(value));
+
+    input.emit(encodeParameterChange(keyAddress(), 0x42));
+    input.emit(encodeParameterChange(keyAddress(), 0x3f));
+
+    expect(keys).toEqual([2]);
+    expect(errors.map((error) => error.message)).toEqual([
+      "Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75."
+    ]);
+    expect(rawKeys).toEqual([0x42, 0x3f]);
+    client.dispose();
   });
 });
