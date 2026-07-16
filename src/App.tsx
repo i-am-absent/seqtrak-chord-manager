@@ -20,7 +20,6 @@ import {
 } from "./midi/midiAccessService";
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
-import { keyAddress } from "./midi/seqtrakSysex";
 import { readPackFromSeqtrak, writePackToSeqtrak } from "./midi/deviceWorkflow";
 
 export default function App() {
@@ -129,7 +128,13 @@ export default function App() {
           return false;
         }
       };
-      keyUnsubscribeRef.current = client.subscribeParameter(keyAddress(), receiveKey);
+      const receiveKeyError = (error: Error): void => {
+        if (generation !== connectionGenerationRef.current) {
+          return;
+        }
+        dispatch({ type: "setMessage", message: error.message });
+      };
+      keyUnsubscribeRef.current = client.subscribeCurrentKey(receiveKey, receiveKeyError);
       stateUnsubscribeRef.current = access.subscribeStateChange((event) => {
         if (
           event.port.state === "disconnected" &&

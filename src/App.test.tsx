@@ -27,10 +27,11 @@ const midiMocks = vi.hoisted(() => ({
   writePackToSeqtrak: vi.fn(),
   mockClient: {
     readCurrentKey: vi.fn(),
-    subscribeParameter: vi.fn(),
+    subscribeCurrentKey: vi.fn(),
     dispose: vi.fn()
   },
   keyCallback: undefined as ((value: number) => void) | undefined,
+  keyErrorCallback: undefined as ((error: Error) => void) | undefined,
   keyUnsubscribe: vi.fn(),
   stateCallback: undefined as ((event: { port: { id: string; state?: string } }) => void) | undefined,
   stateUnsubscribe: vi.fn()
@@ -66,6 +67,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     midiMocks.keyCallback = undefined;
+    midiMocks.keyErrorCallback = undefined;
     midiMocks.stateCallback = undefined;
     midiMocks.keyUnsubscribe.mockReset();
     midiMocks.stateUnsubscribe.mockReset();
@@ -75,8 +77,9 @@ describe("App", () => {
       midiMocks.keyCallback?.(1);
       return 1;
     });
-    midiMocks.mockClient.subscribeParameter.mockReset().mockImplementation((_address, callback) => {
+    midiMocks.mockClient.subscribeCurrentKey.mockReset().mockImplementation((callback, onError) => {
       midiMocks.keyCallback = callback;
+      midiMocks.keyErrorCallback = onError;
       return midiMocks.keyUnsubscribe;
     });
     previewMocks.createPreviewEngine.mockReturnValue({
@@ -328,6 +331,24 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("reports an invalid live KEY wire value without replacing the last offset", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+
+    act(() => {
+      midiMocks.keyCallback?.(2);
+      midiMocks.keyErrorCallback?.(
+        new Error("Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75.")
+      );
+    });
+
+    expect(screen.getByText(
+      "Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75."
+    )).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("releases the previous client on reconnect and selected-port disconnect", async () => {
     const view = renderApp(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
@@ -420,8 +441,8 @@ describe("App", () => {
       { id: "input-1", name: "SEQTRAK Input" },
       expect.objectContaining({ id: "output-1", name: "SEQTRAK Output" })
     );
-    expect(midiMocks.mockClient.subscribeParameter).toHaveBeenCalledWith(
-      [0x30, 0x40, 0x7f],
+    expect(midiMocks.mockClient.subscribeCurrentKey).toHaveBeenCalledWith(
+      expect.any(Function),
       expect.any(Function)
     );
 
