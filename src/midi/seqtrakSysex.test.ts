@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   codeValueToNote,
+  decodeKeyWireValue,
   decodeParameterChange,
   decodeSoundName,
   encodeParameterChange,
@@ -18,6 +19,24 @@ describe("SEQTRAK SysEx helpers", () => {
     expect(encodeParameterRequest(keyAddress())).toEqual([
       0xf0, 0x43, 0x30, 0x7f, 0x1c, 0x0c, 0x30, 0x40, 0x7f, 0xf7
     ]);
+  });
+
+  it("decodes the KEY wire range into logical offsets", () => {
+    expect(decodeKeyWireValue(0x40)).toBe(0);
+    expect(decodeKeyWireValue(0x41)).toBe(1);
+    expect(decodeKeyWireValue(0x4b)).toBe(11);
+  });
+
+  it("rejects values outside the KEY wire range", () => {
+    expect(() => decodeKeyWireValue(0x3f)).toThrow(
+      "Invalid SEQTRAK KEY wire value 63; expected an integer from 64 to 75."
+    );
+    expect(() => decodeKeyWireValue(0x4c)).toThrow(
+      "Invalid SEQTRAK KEY wire value 76; expected an integer from 64 to 75."
+    );
+    expect(() => decodeKeyWireValue(Number.NaN)).toThrow(
+      "Invalid SEQTRAK KEY wire value NaN; expected an integer from 64 to 75."
+    );
   });
 
   it("encodes request and change frames", () => {

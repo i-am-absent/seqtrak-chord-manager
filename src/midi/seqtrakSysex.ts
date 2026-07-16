@@ -52,6 +52,19 @@ export function keyAddress(): SysexAddress {
   return [0x30, 0x40, 0x7f];
 }
 
+const KEY_WIRE_MIN = 0x40;
+const KEY_WIRE_MAX = 0x4b;
+
+export function decodeKeyWireValue(value: number): number {
+  if (!Number.isInteger(value) || value < KEY_WIRE_MIN || value > KEY_WIRE_MAX) {
+    throw new Error(
+      `Invalid SEQTRAK KEY wire value ${value}; expected an integer from ${KEY_WIRE_MIN} to ${KEY_WIRE_MAX}.`
+    );
+  }
+
+  return value - KEY_WIRE_MIN;
+}
+
 export function encodeTrackSoundNameAddress(
   trackIndex: SeqtrakTrackIndex,
   byteIndex: number
