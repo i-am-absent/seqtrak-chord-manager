@@ -6,7 +6,7 @@
 
 **Architecture:** A static React frontend talks only to a `PackRepository`; `SupabasePackRepository` calls narrowly granted PostgreSQL RPC functions with the anon key. A private RLS-enabled base table stores editable pack fields, server-owned moderation fields, JSONB chords, and a bcrypt ownership-token hash, while public RPC results explicitly omit secrets. Local Supabase and pgTAP provide reproducible database tests before migrations are linked and pushed to a new hosted project.
 
-**Tech Stack:** Debian 13 ARM64, Docker Engine, Supabase CLI 2.109.1, Supabase JS 2.110.7, PostgreSQL, pgcrypto, pgTAP, TypeScript, Vitest, Vite
+**Tech Stack:** Debian 13 ARM64, Docker Engine, Supabase CLI 2.109.1, Supabase JS 2.109.0, PostgreSQL, pgcrypto, pgTAP, TypeScript, Vitest, Vite
 
 ## Global Constraints
 
@@ -52,7 +52,7 @@
 
 **Interfaces:**
 - Consumes: Debian 13 `trixie` on ARM64, passwordless `sudo`, Node.js 20, npm 9.
-- Produces: Docker available to user `rpi`, `supabase@2.109.1`, `@supabase/supabase-js@2.110.7`, and runnable npm database commands.
+- Produces: Docker available to user `rpi`, exact `supabase@2.109.1`, exact `@supabase/supabase-js@2.109.0`, and runnable npm database commands.
 
 - [ ] **Step 1: Record the pre-install state**
 
@@ -100,9 +100,11 @@ Expected: `hello-world` exits zero and Compose prints a version. Record that mem
 Run:
 
 ```bash
-npm install @supabase/supabase-js@2.110.7
-npm install --save-dev supabase@2.109.1
+npm install --save-exact @supabase/supabase-js@2.109.0
+npm install --save-dev --save-exact supabase@2.109.1
 ```
+
+Pin Supabase JS to 2.109.0 because 2.110.x requires Node.js 22 or newer; 2.109.0 formally supports this project's Node.js 20.19.2 runtime.
 
 Add these scripts to `package.json`:
 
