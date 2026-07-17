@@ -226,6 +226,25 @@ describe("SupabasePackRepository response boundary", () => {
     });
   });
 
+  it("rejects a get response missing the required source track key", async () => {
+    const { client, repository } = setup();
+    const { sourceTrackIndex: _sourceTrackIndex, ...missingSourceTrack } = publicPack;
+    client.responses.push({ data: missingSourceTrack, error: null });
+
+    await expect(repository.getPack(publicPack.id)).rejects.toBeInstanceOf(SharingResponseError);
+  });
+
+  it("rejects a list item missing the required source track key", async () => {
+    const { client, repository } = setup();
+    const { sourceTrackIndex: _sourceTrackIndex, ...missingSourceTrack } = publicPack;
+    client.responses.push({
+      data: { items: [missingSourceTrack], nextCursor: null },
+      error: null
+    });
+
+    await expect(repository.listPacks()).rejects.toBeInstanceOf(SharingResponseError);
+  });
+
   it.each([
     ["non-object page", []],
     ["unknown page field", { items: [], nextCursor: null, total: 0 }],

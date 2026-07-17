@@ -47,7 +47,8 @@ const publicKeys = [
   "id",
   "createdAt",
   "updatedAt",
-  "reportedCount"
+  "reportedCount",
+  "sourceTrackIndex"
 ] as const;
 const chordKeys = ["slotIndex", "notes", "displayName"] as const;
 const cursorKeys = ["createdAt", "id"] as const;
@@ -146,7 +147,7 @@ function parseEditablePack(value: Record<string, unknown>): EditablePack | null 
 }
 
 function parsePublicPack(value: unknown): PublicPack {
-  if (!isRecord(value) || !hasExactKeys(value, publicKeys, ["sourceTrackIndex"])) {
+  if (!isRecord(value) || !hasExactKeys(value, publicKeys)) {
     throw new SharingResponseError("The sharing service returned an invalid pack.");
   }
   const editableValue = Object.fromEntries(Object.entries(value).filter(([key]) =>
