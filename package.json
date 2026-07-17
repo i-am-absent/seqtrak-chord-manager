@@ -10,9 +10,14 @@
     "serve": "node scripts/static-server.mjs",
     "test": "vitest run --exclude scripts/static-server.test.mjs",
     "test:server": "node --test scripts/static-server.test.mjs",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "test:db": "supabase test db"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.109.0",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -27,6 +32,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "jsdom": "latest",
+    "supabase": "2.109.1",
     "vitest": "latest"
   }
 }
