@@ -45,12 +45,23 @@ npx supabase login
 npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
 npx supabase migration list
 npx supabase db push --dry-run
+```
+
+**ここで停止する。** operator が `migration list` と `db push --dry-run` の出力を読み、意図した 2 件の sharing migration だけが対象で、schema drift がないことを確認する。確認結果に対する明示的な承認を得るまで、実際の push へ進まない。
+
+### 承認後の push
+
+上記の人手確認と明示承認が完了した場合に限り、独立した操作として一度だけ実行する。
+
+```bash
 npx supabase db push
 ```
 
-push の前に必ず `migration list` と `db push --dry-run` の結果を読み、意図した 2 件の sharing migration 以外や schema drift があれば停止する。dry run を確認せずに push しない。push 後の anonymous API E2E は環境変数から credential を渡す一回限りの検証スクリプトで行い、作成した test row を削除または soft-delete する。
+### push 後の E2E 検証
 
-production に link した状態では `db reset` や `db reset --linked` を決して実行しない。
+push が成功してから、anonymous API の E2E を別の手順として実行する。環境変数から credential を渡す一回限りの検証スクリプトで、create、get、list、update、report、wrong-token rejection、delete、削除後の非表示を確認し、作成した test row を削除または soft-delete する。E2E の credential を command arguments、ファイル、レポートへ記録しない。
+
+plain `npm run db:reset`（内部の `npx supabase db reset`）は、project が link 済みでも local stack を対象とするため、local 再現性検証に使用できる。禁止するのは `npx supabase db reset --linked` や production を指す `--db-url` を指定した reset など、remote database に対する破壊的 reset である。
 
 ## フロントエンド設定
 
@@ -91,5 +102,5 @@ npx supabase migration list
 - ローカル stack が起動しない場合は、Docker daemon と port の使用状況を確認する。SMTP UI は Supabase の既定 port ではなく `http://127.0.0.1:8025` を使う
 - local migration の再現性に問題がある場合は、未保存のデータを前提にせず、local `db:reset` で先頭から再現する
 - Hosted 側に差分がある場合は、Dashboard で修正せず、local migration と dry run を見直す
-- production に対して linked `db reset` を実行しない
+- production に対して `npx supabase db reset --linked` や production の `--db-url` を指定した破壊的 reset を実行しない。plain local `npm run db:reset` はこの禁止対象ではない
 - status や start の出力に含まれる local keys も credential として扱い、共有前に除去する
