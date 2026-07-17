@@ -391,6 +391,8 @@ git commit -m "feat: add sharing repository contracts"
 
 ### Task 3: Create the Private Pack Schema and Database Validation
 
+Database-normalized text uses PostgreSQL's exact default semantics: `btrim(text)` removes only leading and trailing U+0020 SPACE, and `char_length(text)` counts Unicode code points. Non-U+0020 whitespace at an edge is preserved and counts toward the field limit.
+
 **Files:**
 - Create: `supabase/migrations/20260717000100_create_chord_pack_schema.sql`
 - Create: `supabase/tests/01_schema_and_validation.test.sql`
@@ -1016,6 +1018,8 @@ git commit -m "feat: secure shared pack ownership mutations"
 ```
 
 ### Task 6: Implement SupabasePackRepository
+
+For database-normalized response fields, strict validation must mirror Task 3 exactly: no leading or trailing U+0020 SPACE and a 1-through-field-maximum Unicode code-point count. Do not use JavaScript `trim()` or UTF-16 `string.length`; a server-valid create response must be accepted before ownership is saved.
 
 **Files:**
 - Create: `src/sharing/supabasePackRepository.ts`

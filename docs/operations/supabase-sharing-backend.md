@@ -34,7 +34,7 @@ sg docker -c 'npm run supabase:stop'
 
 ## クラウド接続
 
-> **保留中:** Hosted project の link、migration push、anonymous API の E2E 検証は、ユーザーが新しい Supabase project を作成し、対話的に login できるようになってから実施する。現時点では以下のコマンドを実行しない。
+初回の Hosted project への link、2 件の sharing migration の push、anonymous API の E2E 検証は 2026-07-17 に完了した。以下は、将来 migration を追加するとき、または replacement project へ展開するときの手順である。既存 project に適用済みの migration は編集せず、新しい migration を追加する。
 
 クラウド操作は必ずこのリポジトリ、またはこのリポジトリ用 worktree のルートから行う。新規 project の Settings で確認した project ref は operator shell の変数にだけ設定し、実値を shell history、ドキュメント、`.env*`、レポートへ書かない。`supabase/.temp/` などの link metadata と、すべての credential は commit しない。
 

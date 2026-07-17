@@ -88,10 +88,9 @@ function isIsoTimestamp(value: unknown): value is string {
 }
 
 function isNormalizedText(value: unknown, maxLength: number): value is string {
-  return typeof value === "string"
-    && value === value.trim()
-    && value.length >= 1
-    && value.length <= maxLength;
+  if (typeof value !== "string" || value.startsWith(" ") || value.endsWith(" ")) return false;
+  const codePointLength = [...value].length;
+  return codePointLength >= 1 && codePointLength <= maxLength;
 }
 
 function parseChord(value: unknown): ChordSlot | null {
