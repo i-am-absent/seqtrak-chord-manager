@@ -103,6 +103,18 @@ describe("SupabasePackRepository lifecycle", () => {
     expect(ownership.get(databaseValidPack.id)).toBe(TOKEN);
   });
 
+  it("accepts PostgreSQL-distinct Unicode tags before saving create ownership", async () => {
+    const { client, ownership, repository } = setup();
+    const databaseValidPack: PublicPack = {
+      ...publicPack,
+      tags: ["İ", "i\u0307"]
+    };
+    client.responses.push({ data: databaseValidPack, error: null });
+
+    await expect(repository.createPack(editable)).resolves.toEqual(databaseValidPack);
+    expect(ownership.get(databaseValidPack.id)).toBe(TOKEN);
+  });
+
   it("does not save ownership when create fails", async () => {
     const { client, ownership, repository } = setup();
     client.responses.push({ data: null, error: { code: "22023", message: "INVALID_PACK_PAYLOAD" } });
@@ -213,7 +225,7 @@ describe("SupabasePackRepository response boundary", () => {
     ["out-of-range source track", { ...publicPack, sourceTrackIndex: 10 }],
     ["blank pack name", { ...publicPack, packName: " " }],
     ["101-code-point pack name", { ...publicPack, packName: `${"🎹".repeat(100)}x` }],
-    ["duplicate normalized tags", { ...publicPack, tags: ["Jazz", "jazz"] }],
+    ["exact duplicate tags", { ...publicPack, tags: ["Jazz", "Jazz"] }],
     ["invalid chord notes", {
       ...publicPack,
       chords: publicPack.chords.map((chord, index) => index === 0 ? { ...chord, notes: [] } : chord)

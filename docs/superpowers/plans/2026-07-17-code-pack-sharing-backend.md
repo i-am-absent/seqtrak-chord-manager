@@ -1021,6 +1021,8 @@ git commit -m "feat: secure shared pack ownership mutations"
 
 For database-normalized response fields, strict validation must mirror Task 3 exactly: no leading or trailing U+0020 SPACE and a 1-through-field-maximum Unicode code-point count. Do not use JavaScript `trim()` or UTF-16 `string.length`; a server-valid create response must be accepted before ownership is saved.
 
+Treat PostgreSQL `lower(text)` under the database collation as authoritative for case-insensitive tag uniqueness. Response validation must not emulate it with JavaScript `toLowerCase()`; reject exact duplicate strings, but accept non-identical tags that a successful database response returns.
+
 **Files:**
 - Create: `src/sharing/supabasePackRepository.ts`
 - Create: `src/sharing/supabasePackRepository.test.ts`

@@ -97,6 +97,8 @@ The table has an index supporting the stable public ordering `created_at DESC, i
 
 Text normalization is defined by PostgreSQL's default `btrim(text)`, which removes U+0020 SPACE only, and text limits use `char_length(text)`, which counts Unicode code points. The TypeScript response boundary applies those same rules; it does not use JavaScript `trim()` or UTF-16 `string.length` for database-normalized fields.
 
+PostgreSQL is authoritative for locale-dependent case-insensitive tag uniqueness through `lower(text)`. The TypeScript response boundary does not attempt to reproduce database collation with JavaScript `toLowerCase()`; it rejects exact duplicate tag strings, which a valid database response cannot contain, while accepting case forms that PostgreSQL kept distinct.
+
 All slot indexes 1 through 7 must be present. The note values remain SEQTRAK-relative; the connected device KEY is not stored or published. JSON validation runs inside create and update RPCs rather than trusting TypeScript validation alone.
 
 ### Client and Server Fields

@@ -112,7 +112,7 @@ function parseEditablePack(value: Record<string, unknown>): EditablePack | null 
     !Array.isArray(value.tags)
     || value.tags.length > 10
     || !value.tags.every((tag) => isNormalizedText(tag, 30))
-    || new Set(value.tags.map((tag) => tag.toLowerCase())).size !== value.tags.length
+    || new Set(value.tags).size !== value.tags.length
   ) return null;
   if (typeof value.key !== "string" || !chromaticKeys.includes(value.key as (typeof chromaticKeys)[number])) return null;
   if (!isNormalizedText(value.trackSoundName, 100)) return null;
