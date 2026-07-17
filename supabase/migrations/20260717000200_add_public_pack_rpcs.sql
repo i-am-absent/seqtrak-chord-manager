@@ -99,9 +99,100 @@ begin
 end;
 $$;
 
+create or replace function public.update_pack(
+  pack_id uuid,
+  payload jsonb,
+  ownership_token text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target public.chord_packs%rowtype;
+  normalized jsonb;
+  updated public.chord_packs%rowtype;
+begin
+  if ownership_token is null or ownership_token !~ '^[0-9a-f]{64}$' then
+    raise exception 'INVALID_OWNERSHIP_TOKEN' using errcode = '22023';
+  end if;
+  select * into target
+  from public.chord_packs p
+  where p.id = pack_id and not p.hidden and not p.deleted
+  for update;
+  if not found
+     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+    raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
+  end if;
+
+  normalized := private.normalize_pack_payload(payload);
+  update public.chord_packs p set
+    pack_name = normalized->>'packName',
+    author_name = normalized->>'authorName',
+    tags = array(select jsonb_array_elements_text(normalized->'tags')),
+    musical_key = normalized->>'key',
+    track_sound_name = normalized->>'trackSoundName',
+    source_track_index = (normalized->>'sourceTrackIndex')::integer,
+    chords = normalized->'chords',
+    updated_at = statement_timestamp()
+  where p.id = pack_id
+  returning * into updated;
+  return private.public_pack_json(updated);
+end;
+$$;
+
+create or replace function public.delete_pack(pack_id uuid, ownership_token text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target public.chord_packs%rowtype;
+begin
+  if ownership_token is null or ownership_token !~ '^[0-9a-f]{64}$' then
+    raise exception 'INVALID_OWNERSHIP_TOKEN' using errcode = '22023';
+  end if;
+  select * into target
+  from public.chord_packs p
+  where p.id = pack_id and not p.hidden and not p.deleted
+  for update;
+  if not found
+     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+    raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
+  end if;
+  update public.chord_packs p
+    set deleted = true, updated_at = statement_timestamp()
+    where p.id = pack_id;
+end;
+$$;
+
+create or replace function public.report_pack(pack_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.chord_packs p
+    set reported_count = reported_count + 1
+    where p.id = pack_id and not p.hidden and not p.deleted;
+  if not found then
+    raise exception 'PACK_NOT_FOUND' using errcode = 'P0002';
+  end if;
+end;
+$$;
+
 revoke execute on function public.create_pack(jsonb,text) from public;
 revoke execute on function public.get_pack(uuid) from public;
 revoke execute on function public.list_packs(integer,timestamptz,uuid) from public;
+revoke execute on function public.update_pack(uuid,jsonb,text) from public;
+revoke execute on function public.delete_pack(uuid,text) from public;
+revoke execute on function public.report_pack(uuid) from public;
 grant execute on function public.create_pack(jsonb,text) to anon, authenticated;
 grant execute on function public.get_pack(uuid) to anon, authenticated;
 grant execute on function public.list_packs(integer,timestamptz,uuid) to anon, authenticated;
+grant execute on function public.update_pack(uuid,jsonb,text) to anon, authenticated;
+grant execute on function public.delete_pack(uuid,text) to anon, authenticated;
+grant execute on function public.report_pack(uuid) to anon, authenticated;
