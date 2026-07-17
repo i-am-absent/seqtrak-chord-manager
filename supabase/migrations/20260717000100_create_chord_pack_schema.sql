@@ -81,10 +81,10 @@ begin
        or not ((payload->>'sourceTrackIndex') ~ '^[0-9]+$') then
       raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
     end if;
-    source_track_index := (payload->>'sourceTrackIndex')::integer;
-    if source_track_index not between 0 and 9 then
+    if (payload->>'sourceTrackIndex')::numeric not between 0 and 9 then
       raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
     end if;
+    source_track_index := (payload->>'sourceTrackIndex')::integer;
   end if;
 
   if jsonb_typeof(payload->'tags') <> 'array'
@@ -119,12 +119,14 @@ begin
       raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
     end if;
 
-    slot_index := (slot_value->>'slotIndex')::integer;
     display_name := btrim(slot_value->>'displayName');
-    if slot_index not between 1 and 7
-       or slot_index = any(seen_slots)
+    if (slot_value->>'slotIndex')::numeric not between 1 and 7
        or char_length(display_name) not between 1 and 100
        or jsonb_array_length(slot_value->'notes') not between 1 and 4 then
+      raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
+    end if;
+    slot_index := (slot_value->>'slotIndex')::integer;
+    if slot_index = any(seen_slots) then
       raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
     end if;
 
@@ -134,8 +136,11 @@ begin
          or not ((note_value #>> '{}') ~ '^-?[0-9]+$') then
         raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
       end if;
+      if (note_value #>> '{}')::numeric not between 36 and 96 then
+        raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
+      end if;
       note_number := (note_value #>> '{}')::integer;
-      if note_number not between 36 and 96 or note_number = any(notes) then
+      if note_number = any(notes) then
         raise exception 'INVALID_PACK_PAYLOAD' using errcode = '22023';
       end if;
       notes := array_append(notes, note_number);

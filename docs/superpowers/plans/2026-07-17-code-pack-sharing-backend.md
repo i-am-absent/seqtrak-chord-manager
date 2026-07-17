@@ -401,12 +401,12 @@ git commit -m "feat: add sharing repository contracts"
 
 - [ ] **Step 1: Write failing pgTAP structure and validation tests**
 
-Create `supabase/tests/01_schema_and_validation.test.sql` with the pgTAP extension, a transaction, `select plan(18)`, and assertions that:
+Create `supabase/tests/01_schema_and_validation.test.sql` with the pgTAP extension, a transaction, `select plan(21)`, and assertions that:
 
 ```sql
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(18);
+select plan(21);
 select has_extension('pgcrypto');
 select has_table('public', 'chord_packs');
 select col_is_pk('public', 'chord_packs', 'id');
@@ -424,6 +424,9 @@ select throws_ok($$ select private.normalize_pack_payload(jsonb_build_object('pa
 select throws_ok($$ select private.normalize_pack_payload(jsonb_build_object('packName','P','authorName','A','tags',jsonb_build_array('Jazz','jazz'),'key','C','trackSoundName','Pad','chords','[]'::jsonb)) $$, '22023');
 select throws_ok($$ select private.normalize_pack_payload(jsonb_build_object('packName','P','authorName','A','tags','[]'::jsonb,'key','H','trackSoundName','Pad','chords','[]'::jsonb)) $$, '22023');
 select throws_ok($$ select private.normalize_pack_payload(jsonb_build_object('packName','P','authorName','A','tags','[]'::jsonb,'key','C','trackSoundName','Pad','chords',jsonb_build_array(jsonb_build_object('slotIndex',1,'notes',jsonb_build_array(35),'displayName','C')))) $$, '22023');
+select throws_ok($$ select private.normalize_pack_payload(jsonb_set('{"packName":"Pack","authorName":"A","tags":[],"key":"C","trackSoundName":"Pad","chords":[{"slotIndex":1,"notes":[60],"displayName":"C"},{"slotIndex":2,"notes":[60],"displayName":"C"},{"slotIndex":3,"notes":[60],"displayName":"C"},{"slotIndex":4,"notes":[60],"displayName":"C"},{"slotIndex":5,"notes":[60],"displayName":"C"},{"slotIndex":6,"notes":[60],"displayName":"C"},{"slotIndex":7,"notes":[60],"displayName":"C"}]}'::jsonb, '{sourceTrackIndex}', '2147483648'::jsonb)) $$, '22023');
+select throws_ok($$ select private.normalize_pack_payload(jsonb_set('{"packName":"Pack","authorName":"A","tags":[],"key":"C","trackSoundName":"Pad","chords":[{"slotIndex":1,"notes":[60],"displayName":"C"},{"slotIndex":2,"notes":[60],"displayName":"C"},{"slotIndex":3,"notes":[60],"displayName":"C"},{"slotIndex":4,"notes":[60],"displayName":"C"},{"slotIndex":5,"notes":[60],"displayName":"C"},{"slotIndex":6,"notes":[60],"displayName":"C"},{"slotIndex":7,"notes":[60],"displayName":"C"}]}'::jsonb, '{chords,0,slotIndex}', '2147483648'::jsonb)) $$, '22023');
+select throws_ok($$ select private.normalize_pack_payload(jsonb_set('{"packName":"Pack","authorName":"A","tags":[],"key":"C","trackSoundName":"Pad","chords":[{"slotIndex":1,"notes":[60],"displayName":"C"},{"slotIndex":2,"notes":[60],"displayName":"C"},{"slotIndex":3,"notes":[60],"displayName":"C"},{"slotIndex":4,"notes":[60],"displayName":"C"},{"slotIndex":5,"notes":[60],"displayName":"C"},{"slotIndex":6,"notes":[60],"displayName":"C"},{"slotIndex":7,"notes":[60],"displayName":"C"}]}'::jsonb, '{chords,0,notes,0}', '2147483648'::jsonb)) $$, '22023');
 select throws_ok($$ insert into public.chord_packs(pack_name,author_name,tags,musical_key,track_sound_name,chords,ownership_token_hash) values ('P','A','{}','C','Pad','[]','hash') $$, '42501');
 select * from finish();
 rollback;
@@ -641,7 +644,7 @@ sg docker -c 'npm run db:reset'
 sg docker -c 'npm run test:db -- supabase/tests/01_schema_and_validation.test.sql'
 ```
 
-Expected: migration replays from empty state and all 18 pgTAP assertions PASS.
+Expected: migration replays from empty state and all 21 pgTAP assertions PASS.
 
 - [ ] **Step 5: Commit schema and validation**
 
