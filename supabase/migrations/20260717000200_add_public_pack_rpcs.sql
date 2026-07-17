@@ -99,6 +99,27 @@ begin
 end;
 $$;
 
+create or replace function private.ownership_token_matches(
+  ownership_token text,
+  ownership_token_hash text
+)
+returns boolean
+language plpgsql
+set search_path = ''
+as $$
+declare
+  effective_hash text := coalesce(
+    ownership_token_hash,
+    '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.'
+  );
+  calculated_hash text;
+begin
+  calculated_hash := extensions.crypt(ownership_token, effective_hash);
+  return ownership_token_hash is not null
+    and calculated_hash = ownership_token_hash;
+end;
+$$;
+
 create or replace function public.update_pack(
   pack_id uuid,
   payload jsonb,
@@ -111,6 +132,8 @@ set search_path = ''
 as $$
 declare
   target public.chord_packs%rowtype;
+  target_found boolean;
+  token_matches boolean;
   normalized jsonb;
   updated public.chord_packs%rowtype;
 begin
@@ -121,8 +144,12 @@ begin
   from public.chord_packs p
   where p.id = pack_id and not p.hidden and not p.deleted
   for update;
-  if not found
-     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+  target_found := found;
+  token_matches := private.ownership_token_matches(
+    ownership_token,
+    target.ownership_token_hash
+  );
+  if not target_found or not token_matches then
     raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
   end if;
 
@@ -150,6 +177,8 @@ set search_path = ''
 as $$
 declare
   target public.chord_packs%rowtype;
+  target_found boolean;
+  token_matches boolean;
 begin
   if ownership_token is null or ownership_token !~ '^[0-9a-f]{64}$' then
     raise exception 'INVALID_OWNERSHIP_TOKEN' using errcode = '22023';
@@ -158,8 +187,12 @@ begin
   from public.chord_packs p
   where p.id = pack_id and not p.hidden and not p.deleted
   for update;
-  if not found
-     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+  target_found := found;
+  token_matches := private.ownership_token_matches(
+    ownership_token,
+    target.ownership_token_hash
+  );
+  if not target_found or not token_matches then
     raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
   end if;
   update public.chord_packs p
@@ -184,6 +217,7 @@ begin
 end;
 $$;
 
+revoke all on function private.ownership_token_matches(text,text) from public, anon, authenticated;
 revoke execute on function public.create_pack(jsonb,text) from public;
 revoke execute on function public.get_pack(uuid) from public;
 revoke execute on function public.list_packs(integer,timestamptz,uuid) from public;

@@ -834,6 +834,7 @@ git commit -m "feat: add anonymous shared pack RPCs"
 
 **Interfaces:**
 - Produces: `public.update_pack(uuid,jsonb,text)`, `public.delete_pack(uuid,text)`, and `public.report_pack(uuid)`.
+- Produces: private `private.ownership_token_matches(text,text)` for constant-work ownership rejection.
 - Error contract: SQLSTATE `42501` / `PACK_OWNERSHIP_REJECTED`, SQLSTATE `P0002` / `PACK_NOT_FOUND`, SQLSTATE `22023` for invalid payload/token.
 
 - [ ] **Step 1: Add failing mutation tests**
@@ -856,6 +857,8 @@ select throws_ok($$ select public.report_pack(owned_id) $$,'P0002','PACK_NOT_FOU
 
 Also snapshot `created_at`, `reported_count`, `hidden`, and the ownership hash before update and assert they remain identical; assert `updated_at` advances. Mark another row hidden under `reset role` and prove update/delete/report reject it. Prove owner mutation functions are executable by anon while direct base-table mutation remains denied.
 
+Add helper assertions proving `private.ownership_token_matches(text,text)` exists, is not executable by `PUBLIC`, `anon`, or `authenticated`, returns true for a matching token/hash, false for a mismatched token/hash, and false for a null hash. Do not use timing thresholds. The null-hash path must still run bcrypt against a fixed valid cost-10 dummy hash so absent, hidden, and deleted targets do equivalent bcrypt work to visible wrong-token targets.
+
 - [ ] **Step 2: Verify RED**
 
 Run: `sg docker -c 'npm run test:db -- supabase/tests/02_public_pack_rpcs.test.sql'`
@@ -867,6 +870,27 @@ Expected: FAIL because mutation/report RPCs do not exist.
 Add these complete mutation functions and grants:
 
 ```sql
+create or replace function private.ownership_token_matches(
+  ownership_token text,
+  ownership_token_hash text
+)
+returns boolean
+language plpgsql
+set search_path = ''
+as $$
+declare
+  effective_hash text := coalesce(
+    ownership_token_hash,
+    '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.'
+  );
+  calculated_hash text;
+begin
+  calculated_hash := extensions.crypt(ownership_token, effective_hash);
+  return ownership_token_hash is not null
+    and calculated_hash = ownership_token_hash;
+end;
+$$;
+
 create or replace function public.update_pack(
   pack_id uuid,
   payload jsonb,
@@ -879,6 +903,8 @@ set search_path = ''
 as $$
 declare
   target public.chord_packs%rowtype;
+  target_found boolean;
+  token_matches boolean;
   normalized jsonb;
   updated public.chord_packs%rowtype;
 begin
@@ -889,8 +915,12 @@ begin
   from public.chord_packs p
   where p.id = pack_id and not p.hidden and not p.deleted
   for update;
-  if not found
-     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+  target_found := found;
+  token_matches := private.ownership_token_matches(
+    ownership_token,
+    target.ownership_token_hash
+  );
+  if not target_found or not token_matches then
     raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
   end if;
 
@@ -918,6 +948,8 @@ set search_path = ''
 as $$
 declare
   target public.chord_packs%rowtype;
+  target_found boolean;
+  token_matches boolean;
 begin
   if ownership_token is null or ownership_token !~ '^[0-9a-f]{64}$' then
     raise exception 'INVALID_OWNERSHIP_TOKEN' using errcode = '22023';
@@ -926,8 +958,12 @@ begin
   from public.chord_packs p
   where p.id = pack_id and not p.hidden and not p.deleted
   for update;
-  if not found
-     or extensions.crypt(ownership_token, target.ownership_token_hash) <> target.ownership_token_hash then
+  target_found := found;
+  token_matches := private.ownership_token_matches(
+    ownership_token,
+    target.ownership_token_hash
+  );
+  if not target_found or not token_matches then
     raise exception 'PACK_OWNERSHIP_REJECTED' using errcode = '42501';
   end if;
   update public.chord_packs p
@@ -952,6 +988,7 @@ begin
 end;
 $$;
 
+revoke all on function private.ownership_token_matches(text,text) from public, anon, authenticated;
 revoke execute on function public.update_pack(uuid,jsonb,text) from public;
 revoke execute on function public.delete_pack(uuid,text) from public;
 revoke execute on function public.report_pack(uuid) from public;

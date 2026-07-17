@@ -57,7 +57,34 @@ grant usage on schema test_helpers to anon;
 grant execute on function test_helpers.valid_pack_payload(text,text) to anon;
 grant execute on function test_helpers.replacement_pack_payload() to anon;
 
-select plan(113);
+select plan(120);
+
+select has_function('private', 'ownership_token_matches', array['text','text']);
+select ok(not exists (
+  select 1
+  from information_schema.routine_privileges
+  where specific_schema = 'private'
+    and routine_name = 'ownership_token_matches'
+    and grantee = 'PUBLIC'
+    and privilege_type = 'EXECUTE'
+));
+select ok(not coalesce(has_function_privilege('anon', to_regprocedure('private.ownership_token_matches(text,text)'), 'execute'), false));
+select ok(not coalesce(has_function_privilege('authenticated', to_regprocedure('private.ownership_token_matches(text,text)'), 'execute'), false));
+select is(
+  private.ownership_token_matches(
+    repeat('f', 64),
+    extensions.crypt(repeat('f', 64), extensions.gen_salt('bf', 10))
+  ),
+  true
+);
+select is(
+  private.ownership_token_matches(
+    repeat('e', 64),
+    extensions.crypt(repeat('f', 64), extensions.gen_salt('bf', 10))
+  ),
+  false
+);
+select is(private.ownership_token_matches(repeat('f', 64), null), false);
 
 select has_function('public', 'create_pack', array['jsonb','text']);
 select has_function('public', 'get_pack', array['uuid']);
