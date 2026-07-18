@@ -28,7 +28,13 @@ import {
   toEditablePack,
   validateEditablePack
 } from "./sharing/editablePack";
-import { PackOwnershipPersistenceError } from "./sharing/errors";
+import {
+  PackOwnershipPersistenceError,
+  SharingConfigurationError,
+  SharingResponseError,
+  SharingServiceError,
+  SharingValidationError
+} from "./sharing/errors";
 import type { PackRepository } from "./sharing/packRepository";
 import { sharedPackToChordPack } from "./sharing/sharedPackToChordPack";
 import { createSupabasePackRepository } from "./sharing/supabasePackRepository";
@@ -41,6 +47,22 @@ export interface AppProps {
 
 function createProductionPackRepository(): PackRepository {
   return createSupabasePackRepository(import.meta.env);
+}
+
+function publicationErrorMessage(error: unknown): string {
+  if (error instanceof SharingValidationError) {
+    return "The shared pack was rejected. Review its contents and try again.";
+  }
+  if (error instanceof SharingConfigurationError) {
+    return "Shared pack publishing is not configured.";
+  }
+  if (error instanceof SharingResponseError) {
+    return "The sharing service returned an invalid response. Please try again.";
+  }
+  if (error instanceof SharingServiceError) {
+    return "Sharing is temporarily unavailable. Please try again.";
+  }
+  return "Failed to publish shared pack.";
 }
 
 export default function App({
@@ -394,9 +416,7 @@ export default function App({
         completePublication(next, true);
       } else {
         setPublicationSubmitting(false);
-        setPublicationError(
-          error instanceof Error ? error.message : "Failed to publish shared pack."
-        );
+        setPublicationError(publicationErrorMessage(error));
       }
     }
   }, [completePublication, getPackRepository, publicationSnapshot]);

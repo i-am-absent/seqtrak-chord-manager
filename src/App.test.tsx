@@ -6,7 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createDefaultPack } from "./domain/music";
 import * as editablePack from "./sharing/editablePack";
-import { PackOwnershipPersistenceError } from "./sharing/errors";
+import {
+  PackOwnershipPersistenceError,
+  SharingConfigurationError,
+  SharingResponseError,
+  SharingServiceError,
+  SharingValidationError
+} from "./sharing/errors";
 import type { PackRepository } from "./sharing/packRepository";
 import type { EditablePack, PublicPack } from "./sharing/types";
 import { renderApp } from "./test/render";
@@ -798,12 +804,14 @@ describe("App", () => {
     const pending = deferred<PublicPack>();
     const repository = sharingRepository(sharedPack());
     vi.mocked(repository.createPack)
-      .mockRejectedValueOnce(new Error("Sharing is unavailable."))
+      .mockRejectedValueOnce(new SharingServiceError("Sharing is unavailable."))
       .mockReturnValueOnce(pending.promise);
     renderApp(<App packRepository={repository} />);
     await userEvent.click(screen.getByRole("button", { name: "Publish" }));
     await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Sharing is unavailable.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sharing is temporarily unavailable. Please try again."
+    );
     const retry = screen.getByRole("button", { name: "Publish shared pack" });
     fireEvent.click(retry);
     fireEvent.click(retry);
@@ -813,6 +821,47 @@ describe("App", () => {
     await act(async () => pending.resolve(createdPublicPack(
       vi.mocked(repository.createPack).mock.calls[1][0]
     )));
+  });
+
+  it.each([
+    [
+      "unknown SQL details",
+      new Error("insert into private.packs violates constraint packs_owner_check"),
+      "Failed to publish shared pack."
+    ],
+    [
+      "service details containing the anon key",
+      new SharingServiceError("request failed with anon key public-anon-key-value"),
+      "Sharing is temporarily unavailable. Please try again."
+    ],
+    [
+      "validation details containing an ownership hash and privileged metadata",
+      new SharingValidationError(
+        "ownership_token_hash=$2a$ privileged moderation_notes=internal-only"
+      ),
+      "The shared pack was rejected. Review its contents and try again."
+    ],
+    [
+      "configuration details",
+      new SharingConfigurationError("anon key public-anon-key-value is invalid"),
+      "Shared pack publishing is not configured."
+    ],
+    [
+      "invalid response details",
+      new SharingResponseError("private row contains ownership_token_hash=$2a$"),
+      "The sharing service returned an invalid response. Please try again."
+    ]
+  ])("shows only a fixed safe message for %s", async (_case, error, safeMessage) => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockRejectedValueOnce(error);
+    renderApp(<App packRepository={repository} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(safeMessage);
+    expect(alert).not.toHaveTextContent(error.message);
   });
 
   it("treats ownership-save failure as published without retry", async () => {
