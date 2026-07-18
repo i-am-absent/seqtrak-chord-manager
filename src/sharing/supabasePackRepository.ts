@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { chromaticKeys, validatePack, type ChordPack, type ChordSlot } from "../domain/music";
 import {
   PackOwnershipError,
+  PackOwnershipPersistenceError,
   SharedPackNotFoundError,
   SharingConfigurationError,
   SharingResponseError,
@@ -256,7 +257,11 @@ export class SupabasePackRepository implements PackRepository {
       ownership_token: token
     }, [token]);
     const created = parsePublicPack(data);
-    this.ownership.save(created.id, token);
+    try {
+      this.ownership.save(created.id, token);
+    } catch {
+      throw new PackOwnershipPersistenceError(created);
+    }
     return created;
   }
 

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultPack } from "../domain/music";
 import {
   PackOwnershipError,
+  PackOwnershipPersistenceError,
   SharedPackNotFoundError,
   SharingConfigurationError,
   SharingResponseError,
@@ -121,6 +122,25 @@ describe("SupabasePackRepository lifecycle", () => {
 
     await expect(repository.createPack(editable)).rejects.toBeInstanceOf(SharingValidationError);
     expect(ownership.get(publicPack.id)).toBeNull();
+  });
+
+  it("reports ownership persistence failure as token-free partial success", async () => {
+    const client = new FakeRpcClient();
+    const ownership = new MemoryPackOwnershipStore();
+    vi.spyOn(ownership, "save").mockImplementation(() => {
+      throw new Error(`Storage rejected ${TOKEN}`);
+    });
+    const repository = new SupabasePackRepository(client, ownership, { generateToken: () => TOKEN });
+    client.responses.push({ data: publicPack, error: null });
+    const error = await repository.createPack(editable).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(PackOwnershipPersistenceError);
+    expect(error).toMatchObject({
+      message: "The pack was published, but browser ownership could not be saved.",
+      createdPack: publicPack
+    });
+    expect(JSON.stringify(error)).not.toContain(TOKEN);
+    expect((error as Error & { cause?: Error }).cause?.message).not.toContain(TOKEN);
+    expect(client.calls).toHaveLength(1);
   });
 
   it("updates with only editable fields and stored ownership", async () => {
