@@ -405,6 +405,8 @@ button.slot-card:hover {
 }
 
 .shared-pack-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 16px;
 }
 
@@ -419,6 +421,7 @@ button.slot-card:hover {
   border-radius: 999px;
   color: #4b5565;
   font-size: 12px;
+  min-width: 0;
   padding: 4px 8px;
 }
 
@@ -427,7 +430,12 @@ button.slot-card:hover {
   gap: 4px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
+  min-width: 0;
   padding-left: 22px;
+}
+
+.shared-chord-list li {
+  min-width: 0;
 }
 
 .shared-pack-card time {
@@ -445,6 +453,8 @@ button.slot-card:hover {
   border: 1px solid #fca5a5;
   border-radius: 8px;
   color: #991b1b;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 12px;
 }
 
