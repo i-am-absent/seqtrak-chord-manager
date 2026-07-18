@@ -118,10 +118,12 @@ describe("SharedPackBrowser initial list", () => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 describe("SharedPackBrowser pagination and refresh", () => {
@@ -171,7 +173,12 @@ describe("SharedPackBrowser pagination and refresh", () => {
         nextCursor: cursor,
       })
       .mockRejectedValueOnce(new Error("Next page failed."))
-      .mockResolvedValueOnce({ items: [], nextCursor: null });
+      .mockResolvedValueOnce({
+        items: [
+          publicPack("00000000-0000-4000-8000-000000000002", "Second"),
+        ],
+        nextCursor: null,
+      });
     render(
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
@@ -188,7 +195,13 @@ describe("SharedPackBrowser pagination and refresh", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Try loading more" }),
     );
-    await waitFor(() => expect(listPacks).toHaveBeenCalledTimes(3));
+    await screen.findByRole("heading", { name: "Second" });
+    expect(listPacks).toHaveBeenCalledTimes(3);
+    expect(listPacks).toHaveBeenNthCalledWith(3, { limit: 20, cursor });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Load more" }),
+    ).not.toBeInTheDocument();
   });
 
   it("refreshes from the first page and replaces existing cards", async () => {
@@ -253,5 +266,190 @@ describe("SharedPackBrowser pagination and refresh", () => {
         screen.queryByRole("heading", { name: "Stale" }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("ignores an older first-page rejection after refresh succeeds", async () => {
+    const oldRequest = deferred<PackPage>();
+    const freshCursor = {
+      createdAt: "2026-07-18T00:01:00.000Z",
+      id: "00000000-0000-4000-8000-000000000002",
+    };
+    const listPacks = vi
+      .fn<PackRepository["listPacks"]>()
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockResolvedValueOnce({
+        items: [publicPack(freshCursor.id, "Fresh")],
+        nextCursor: freshCursor,
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+    render(
+      <SharedPackBrowser
+        getRepository={() => fakeRepository(listPacks)}
+        onLoadPack={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("heading", { name: "Fresh" });
+    await act(async () => oldRequest.reject(new Error("Stale failure.")));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fresh" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(listPacks).toHaveBeenCalledTimes(3));
+    expect(listPacks).toHaveBeenNthCalledWith(3, {
+      limit: 20,
+      cursor: freshCursor,
+    });
+  });
+
+  it("ignores stale append success after refresh replaces the page", async () => {
+    const appendRequest = deferred<PackPage>();
+    const oldCursor = {
+      createdAt: "2026-07-18T00:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000001",
+    };
+    const freshCursor = {
+      createdAt: "2026-07-18T00:01:00.000Z",
+      id: "00000000-0000-4000-8000-000000000002",
+    };
+    const staleCursor = {
+      createdAt: "2026-07-18T00:02:00.000Z",
+      id: "00000000-0000-4000-8000-000000000003",
+    };
+    const listPacks = vi
+      .fn<PackRepository["listPacks"]>()
+      .mockResolvedValueOnce({
+        items: [publicPack(oldCursor.id, "Old")],
+        nextCursor: oldCursor,
+      })
+      .mockReturnValueOnce(appendRequest.promise)
+      .mockResolvedValueOnce({
+        items: [publicPack(freshCursor.id, "Fresh")],
+        nextCursor: freshCursor,
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+    render(
+      <SharedPackBrowser
+        getRepository={() => fakeRepository(listPacks)}
+        onLoadPack={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Old" });
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("heading", { name: "Fresh" });
+    await act(async () =>
+      appendRequest.resolve({
+        items: [publicPack(staleCursor.id, "Stale append")],
+        nextCursor: staleCursor,
+      }),
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Stale append" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fresh" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Old" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(listPacks).toHaveBeenCalledTimes(4));
+    expect(listPacks).toHaveBeenNthCalledWith(4, {
+      limit: 20,
+      cursor: freshCursor,
+    });
+  });
+
+  it("ignores stale append rejection after refresh replaces the page", async () => {
+    const appendRequest = deferred<PackPage>();
+    const oldCursor = {
+      createdAt: "2026-07-18T00:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000001",
+    };
+    const freshCursor = {
+      createdAt: "2026-07-18T00:01:00.000Z",
+      id: "00000000-0000-4000-8000-000000000002",
+    };
+    const listPacks = vi
+      .fn<PackRepository["listPacks"]>()
+      .mockResolvedValueOnce({
+        items: [publicPack(oldCursor.id, "Old")],
+        nextCursor: oldCursor,
+      })
+      .mockReturnValueOnce(appendRequest.promise)
+      .mockResolvedValueOnce({
+        items: [publicPack(freshCursor.id, "Fresh")],
+        nextCursor: freshCursor,
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+    render(
+      <SharedPackBrowser
+        getRepository={() => fakeRepository(listPacks)}
+        onLoadPack={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Old" });
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("heading", { name: "Fresh" });
+    await act(async () =>
+      appendRequest.reject(new Error("Stale append failed.")),
+    );
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fresh" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Old" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(listPacks).toHaveBeenCalledTimes(4));
+    expect(listPacks).toHaveBeenNthCalledWith(4, {
+      limit: 20,
+      cursor: freshCursor,
+    });
+  });
+
+  it("guards duplicate append invocations while the first is pending", async () => {
+    const appendRequest = deferred<PackPage>();
+    const cursor = {
+      createdAt: "2026-07-18T00:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000001",
+    };
+    const listPacks = vi
+      .fn<PackRepository["listPacks"]>()
+      .mockResolvedValueOnce({
+        items: [publicPack(cursor.id, "First")],
+        nextCursor: cursor,
+      })
+      .mockReturnValue(appendRequest.promise);
+    render(
+      <SharedPackBrowser
+        getRepository={() => fakeRepository(listPacks)}
+        onLoadPack={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "First" });
+    const loadMore = screen.getByRole("button", { name: "Load more" });
+    act(() => {
+      loadMore.click();
+      loadMore.click();
+    });
+
+    expect(listPacks).toHaveBeenCalledTimes(2);
+    expect(listPacks).toHaveBeenNthCalledWith(2, { limit: 20, cursor });
+    await act(async () =>
+      appendRequest.resolve({
+        items: [
+          publicPack("00000000-0000-4000-8000-000000000002", "Second"),
+        ],
+        nextCursor: null,
+      }),
+    );
+    await screen.findByRole("heading", { name: "Second" });
   });
 });

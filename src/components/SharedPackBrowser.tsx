@@ -30,9 +30,11 @@ export function SharedPackBrowser({
   >("idle");
   const [appendError, setAppendError] = useState("");
   const generationRef = useRef(0);
+  const appendInFlightRef = useRef(false);
 
   const loadFirstPage = useCallback(async () => {
     const generation = ++generationRef.current;
+    appendInFlightRef.current = false;
     setReplaceState("loading");
     setReplaceError("");
     setAppendState("idle");
@@ -53,12 +55,14 @@ export function SharedPackBrowser({
   const loadMore = useCallback(async () => {
     if (
       !nextCursor ||
+      appendInFlightRef.current ||
       appendState === "loading" ||
       replaceState === "loading"
     )
       return;
     const generation = generationRef.current;
     const cursor = nextCursor;
+    appendInFlightRef.current = true;
     setAppendState("loading");
     setAppendError("");
     try {
@@ -67,11 +71,13 @@ export function SharedPackBrowser({
         cursor,
       });
       if (generation !== generationRef.current) return;
+      appendInFlightRef.current = false;
       setItems((current) => [...current, ...page.items]);
       setNextCursor(page.nextCursor);
       setAppendState("idle");
     } catch (error) {
       if (generation !== generationRef.current) return;
+      appendInFlightRef.current = false;
       setAppendError(errorMessage(error));
       setAppendState("error");
     }
