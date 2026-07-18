@@ -618,6 +618,81 @@ describe("App", () => {
     expect(screen.getByDisplayValue("Unsaved Local Pack")).toBeInTheDocument();
   });
 
+  it("keeps repository creation lazy and reuses one factory instance", async () => {
+    const repository = sharingRepository(sharedPack());
+    const createPackRepository = vi.fn(() => repository);
+    renderApp(<App createPackRepository={createPackRepository} />);
+
+    expect(createPackRepository).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await screen.findByRole("heading", { name: "Shared Starter" });
+    expect(createPackRepository).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(repository.listPacks).toHaveBeenCalledTimes(2));
+    expect(createPackRepository).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a replacement injected repository while the shared view is active", async () => {
+    const firstRepository = sharingRepository(sharedPack("First Repository Pack"));
+    const secondRepository = sharingRepository(sharedPack("Second Repository Pack"));
+    const view = renderApp(<App packRepository={firstRepository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await screen.findByRole("heading", { name: "First Repository Pack" });
+
+    view.rerender(<App packRepository={secondRepository} />);
+
+    await screen.findByRole("heading", { name: "Second Repository Pack" });
+    expect(secondRepository.listPacks).toHaveBeenCalledWith({ limit: 20 });
+  });
+
+  it("creates from a replacement factory instead of reusing the previous instance", async () => {
+    const firstRepository = sharingRepository(sharedPack("First Factory Pack"));
+    const secondRepository = sharingRepository(sharedPack("Second Factory Pack"));
+    const firstFactory = vi.fn(() => firstRepository);
+    const secondFactory = vi.fn(() => secondRepository);
+    const view = renderApp(<App createPackRepository={firstFactory} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await screen.findByRole("heading", { name: "First Factory Pack" });
+
+    view.rerender(<App createPackRepository={secondFactory} />);
+
+    await screen.findByRole("heading", { name: "Second Factory Pack" });
+    expect(firstFactory).toHaveBeenCalledTimes(1);
+    expect(secondFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries synchronous repository construction without caching the failure", async () => {
+    const repository = sharingRepository(sharedPack());
+    const createPackRepository = vi
+      .fn<() => PackRepository>()
+      .mockImplementationOnce(() => {
+        throw new Error("Temporary repository construction failure.");
+      })
+      .mockReturnValue(repository);
+    renderApp(<App createPackRepository={createPackRepository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Temporary repository construction failure."
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await screen.findByRole("heading", { name: "Shared Starter" });
+    expect(createPackRepository).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes exactly one main landmark in the shared view", async () => {
+    renderApp(<App packRepository={sharingRepository(sharedPack())} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await screen.findByRole("heading", { name: "Shared Starter" });
+
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(screen.getByRole("region", {
+      name: "Shared pack browser workspace"
+    })).toHaveClass("shared-workspace");
+  });
+
   it("keeps the current editor when shared-pack confirmation is cancelled", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     renderApp(<App packRepository={sharingRepository(sharedPack())} />);

@@ -50,11 +50,19 @@ export default function App({
   const [selectedTrackIndex, setSelectedTrackIndex] = useState<SeqtrakTrackIndex>(7);
   const [currentScale, setCurrentScale] = useState<number | null>(null);
   const [seqtrakKeyOffset, setSeqtrakKeyOffset] = useState(0);
-  const repositoryRef = useRef<PackRepository | null>(packRepository ?? null);
+  const repositoryRef = useRef<{
+    source: PackRepository | (() => PackRepository);
+    repository: PackRepository;
+  } | null>(null);
   const getPackRepository = useCallback(() => {
-    repositoryRef.current ??= createPackRepository();
-    return repositoryRef.current;
-  }, [createPackRepository]);
+    const source = packRepository ?? createPackRepository;
+    if (repositoryRef.current?.source === source) {
+      return repositoryRef.current.repository;
+    }
+    const repository = packRepository ?? createPackRepository();
+    repositoryRef.current = { source, repository };
+    return repository;
+  }, [createPackRepository, packRepository]);
   const clientRef = useRef<SeqtrakClient | null>(null);
   const keyUnsubscribeRef = useRef<(() => void) | null>(null);
   const stateUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -409,12 +417,15 @@ export default function App({
         />
         </section>
       ) : (
-        <main className="shared-workspace">
+        <section
+          className="shared-workspace"
+          aria-label="Shared pack browser workspace"
+        >
           <SharedPackBrowser
             getRepository={getPackRepository}
             onLoadPack={handleLoadSharedPack}
           />
-        </main>
+        </section>
       )}
     </main>
   );
