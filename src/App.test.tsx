@@ -5,12 +5,42 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createDefaultPack } from "./domain/music";
+import type { PackRepository } from "./sharing/packRepository";
+import type { PublicPack } from "./sharing/types";
 import { renderApp } from "./test/render";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => { resolve = next; });
   return { promise, resolve };
+}
+
+function sharedPack(name = "Shared Starter"): PublicPack {
+  const pack = createDefaultPack();
+  return {
+    packName: name,
+    authorName: "Ada",
+    tags: ["shared"],
+    key: "D",
+    trackSoundName: "Warm Pad",
+    sourceTrackIndex: 7,
+    chords: pack.chords.map((chord) => ({ ...chord, notes: [...chord.notes] })),
+    id: "00000000-0000-4000-8000-000000000001",
+    createdAt: "2026-07-18T00:00:00.000Z",
+    updatedAt: "2026-07-18T00:00:00.000Z",
+    reportedCount: 0
+  };
+}
+
+function sharingRepository(pack: PublicPack): PackRepository {
+  return {
+    listPacks: vi.fn().mockResolvedValue({ items: [pack], nextCursor: null }),
+    createPack: vi.fn(),
+    updatePack: vi.fn(),
+    deletePack: vi.fn(),
+    reportPack: vi.fn(),
+    getPack: vi.fn()
+  };
 }
 
 const previewMocks = vi.hoisted(() => ({
@@ -572,5 +602,66 @@ describe("App", () => {
     expect(screen.getByText("Status: disconnected")).toBeInTheDocument();
     expect(screen.queryByText("Write verified.")).not.toBeInTheDocument();
     expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+  });
+
+  it("opens the shared view without discarding editor state", async () => {
+    const repository = sharingRepository(sharedPack());
+    renderApp(<App packRepository={repository} />);
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Unsaved Local Pack");
+
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    expect(await screen.findByRole("heading", { name: "Shared Starter" })).toBeInTheDocument();
+    expect(repository.listPacks).toHaveBeenCalledWith({ limit: 20 });
+
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.getByDisplayValue("Unsaved Local Pack")).toBeInTheDocument();
+  });
+
+  it("keeps the current editor when shared-pack confirmation is cancelled", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderApp(<App packRepository={sharingRepository(sharedPack())} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Load Shared Starter into editor" }));
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Replace the current editor contents with “Shared Starter”?"
+    );
+    expect(screen.getByRole("heading", { name: "Shared Starter" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.getByDisplayValue("Untitled Pack")).toBeInTheDocument();
+  });
+
+  it("loads a confirmed independent copy, resets slot and SCALE, and returns to editor", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderApp(<App packRepository={sharingRepository(sharedPack())} />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Load Shared Starter into editor" }));
+
+    expect(screen.getByDisplayValue("Shared Starter")).toBeInTheDocument();
+    expect(screen.getByText("Loaded “Shared Starter” from shared packs.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 1 C" })).toHaveClass("selected");
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write to SEQTRAK" })).toBeDisabled();
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true");
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
+  });
+
+  it("contains missing sharing configuration and keeps the editor usable", async () => {
+    renderApp(<App createPackRepository={() => {
+      throw new Error("Supabase URL and anonymous key are required.");
+    }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+    expect(screen.getByLabelText("Pack metadata")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect SEQTRAK" })).toBeEnabled();
   });
 });

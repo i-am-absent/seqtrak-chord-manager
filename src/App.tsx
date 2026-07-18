@@ -5,6 +5,7 @@ import { DevicePanel, type DeviceStatus } from "./components/DevicePanel";
 import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { RecommendationPanel } from "./components/RecommendationPanel";
+import { SharedPackBrowser } from "./components/SharedPackBrowser";
 import { createEditorState, editorReducer } from "./domain/packEditor";
 import {
   assertSeqtrakKeyOffset,
@@ -21,9 +22,26 @@ import {
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
 import { readPackFromSeqtrak, writePackToSeqtrak } from "./midi/deviceWorkflow";
+import type { PackRepository } from "./sharing/packRepository";
+import { sharedPackToChordPack } from "./sharing/sharedPackToChordPack";
+import { createSupabasePackRepository } from "./sharing/supabasePackRepository";
+import type { PublicPack } from "./sharing/types";
 
-export default function App() {
+export interface AppProps {
+  packRepository?: PackRepository;
+  createPackRepository?: () => PackRepository;
+}
+
+function createProductionPackRepository(): PackRepository {
+  return createSupabasePackRepository(import.meta.env);
+}
+
+export default function App({
+  packRepository,
+  createPackRepository = createProductionPackRepository
+}: AppProps = {}) {
   const [state, dispatch] = useReducer(editorReducer, createEditorState(createDefaultPack()));
+  const [activeView, setActiveView] = useState<"editor" | "shared-packs">("editor");
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("disconnected");
   const [midiInputs, setMidiInputs] = useState<MidiInputLike[]>([]);
   const [midiOutputs, setMidiOutputs] = useState<MidiOutputLike[]>([]);
@@ -32,6 +50,11 @@ export default function App() {
   const [selectedTrackIndex, setSelectedTrackIndex] = useState<SeqtrakTrackIndex>(7);
   const [currentScale, setCurrentScale] = useState<number | null>(null);
   const [seqtrakKeyOffset, setSeqtrakKeyOffset] = useState(0);
+  const repositoryRef = useRef<PackRepository | null>(packRepository ?? null);
+  const getPackRepository = useCallback(() => {
+    repositoryRef.current ??= createPackRepository();
+    return repositoryRef.current;
+  }, [createPackRepository]);
   const clientRef = useRef<SeqtrakClient | null>(null);
   const keyUnsubscribeRef = useRef<(() => void) | null>(null);
   const stateUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -271,6 +294,22 @@ export default function App() {
     }
   }, [currentScale, selectedTrackIndex, state.pack]);
 
+  const handleLoadSharedPack = useCallback((pack: PublicPack) => {
+    const confirmed = window.confirm(
+      `Replace the current editor contents with “${pack.packName}”?`
+    );
+    if (!confirmed) {
+      return;
+    }
+    setCurrentScale(null);
+    dispatch({
+      type: "replacePack",
+      pack: sharedPackToChordPack(pack),
+      message: `Loaded “${pack.packName}” from shared packs.`
+    });
+    setActiveView("editor");
+  }, []);
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -278,9 +317,26 @@ export default function App() {
           <p className="eyebrow">SEQTRAK</p>
           <h1>Chord Manager</h1>
         </div>
+        <nav className="view-switch" aria-label="Application view">
+          <button
+            type="button"
+            aria-pressed={activeView === "editor"}
+            onClick={() => setActiveView("editor")}
+          >
+            Editor
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeView === "shared-packs"}
+            onClick={() => setActiveView("shared-packs")}
+          >
+            Shared Packs
+          </button>
+        </nav>
       </header>
 
-      <section className="workspace" aria-label="Chord editor workspace">
+      {activeView === "editor" ? (
+        <section className="workspace" aria-label="Chord editor workspace">
         <DevicePanel
           status={deviceStatus}
           inputs={midiInputs}
@@ -351,7 +407,15 @@ export default function App() {
             })
           }
         />
-      </section>
+        </section>
+      ) : (
+        <main className="shared-workspace">
+          <SharedPackBrowser
+            getRepository={getPackRepository}
+            onLoadPack={handleLoadSharedPack}
+          />
+        </main>
+      )}
     </main>
   );
 }
