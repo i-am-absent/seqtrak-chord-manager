@@ -36,6 +36,6 @@
     "jsdom": "latest",
     "supabase": "2.109.1",
     "vitest": "latest",
-    "yaml": "2.8.1"
+    "yaml": "2.9.0"
   }
 }
