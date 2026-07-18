@@ -35,6 +35,7 @@
     "@types/react-dom": "latest",
     "jsdom": "latest",
     "supabase": "2.109.1",
-    "vitest": "latest"
+    "vitest": "latest",
+    "yaml": "2.8.1"
   }
 }
