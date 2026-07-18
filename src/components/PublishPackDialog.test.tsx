@@ -33,6 +33,9 @@ function setup(submitting = false, error = "") {
 it("shows the fixed snapshot and focuses a labelled modal", () => {
   setup();
   expect(screen.getByRole("dialog", { name: "Publish shared pack" })).toHaveAttribute("open");
+  expect(screen.getByRole("dialog")).toHaveClass("publish-dialog");
+  expect(screen.getByRole("heading", { name: "Publish shared pack" }).parentElement)
+    .toHaveClass("publish-dialog-card");
   expect(screen.getByRole("heading", { name: "Publish shared pack" })).toHaveFocus();
   for (const text of ["Publish Me", "Ada", "KEY D", "Warm Pad", "pop, bright"]) {
     expect(screen.getByText(text)).toBeInTheDocument();
