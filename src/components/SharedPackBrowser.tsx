@@ -127,7 +127,9 @@ export function SharedPackBrowser({
                 <p>{pack.trackSoundName}</p>
                 <div className="shared-tag-row">
                   {pack.tags.map((tag) => (
-                    <span key={tag}>{tag}</span>
+                    <span className="shared-tag" key={tag}>
+                      {tag}
+                    </span>
                   ))}
                 </div>
                 <ol className="shared-chord-list">
@@ -139,6 +141,7 @@ export function SharedPackBrowser({
                   {new Date(pack.createdAt).toLocaleDateString()}
                 </time>
                 <button
+                  className="shared-load-action"
                   type="button"
                   aria-label={`Load ${pack.packName} into editor`}
                   onClick={() => onLoadPack(pack)}

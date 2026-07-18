@@ -57,9 +57,16 @@ describe("SharedPackBrowser initial list", () => {
     expect(screen.getByText("KEY C")).toBeInTheDocument();
     expect(screen.getByText("Warm Pad")).toBeInTheDocument();
     expect(screen.getByText("pop")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Newest Pack" }).closest("article"),
+    ).toHaveClass("shared-pack-card", "panel");
+    expect(screen.getByText("pop")).toHaveClass("shared-tag");
     for (const chord of pack.chords) {
       expect(screen.getByText(chord.displayName)).toBeInTheDocument();
     }
+    expect(
+      screen.getByRole("button", { name: "Load Newest Pack into editor" }),
+    ).toHaveClass("shared-load-action");
     expect(
       screen.getByRole("button", { name: "Load Newest Pack into editor" }),
     ).toBeEnabled();
