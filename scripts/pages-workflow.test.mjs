@@ -56,17 +56,33 @@ function semanticSteps(steps) {
   return steps.map(({ name: _displayName, ...semanticStep }) => semanticStep);
 }
 
+function operationalWorkflow(workflow) {
+  const { name: _workflowDisplayName, jobs = {}, ...workflowConfiguration } = workflow;
+
+  return {
+    ...workflowConfiguration,
+    jobs: Object.fromEntries(Object.entries(jobs).map(([jobId, job]) => {
+      const { name: _jobDisplayName, steps, ...jobConfiguration } = job;
+
+      return [jobId, {
+        ...jobConfiguration,
+        ...(steps === undefined ? {} : { steps: semanticSteps(steps) }),
+      }];
+    })),
+  };
+}
+
 function assertWorkflowContract(source) {
   const workflow = parse(source);
-  const semanticWorkflow = JSON.stringify(workflow);
+  const operationalConfiguration = JSON.stringify(operationalWorkflow(workflow));
 
   assert.doesNotMatch(
-    semanticWorkflow,
+    operationalConfiguration,
     /secrets\.|service[_-]?role/i,
     "workflow must not consume secrets or service-role credentials",
   );
   assert.doesNotMatch(
-    semanticWorkflow,
+    operationalConfiguration,
     /(?:supabase\s+(?:db|migration)|(?:prisma|drizzle(?:-kit)?|knex|sequelize)[^"\\n]*migrat|npm\s+run\s+(?:db(?::[\w-]+)?|test:db))/i,
     "workflow must not run database or migration commands",
   );
@@ -86,8 +102,8 @@ function assertWorkflowContract(source) {
   );
   assert.deepEqual(
     workflow.permissions,
-    { contents: "read" },
-    "workflow permissions must grant contents read only",
+    { contents: "read", pages: "read" },
+    "workflow permissions must grant contents and Pages read only",
   );
   assert.deepEqual(
     Object.keys(workflow.jobs ?? {}).sort(),
@@ -141,7 +157,10 @@ test("Pages workflow accepts harmless presentation changes", async (t) => {
   const workflow = await readFile(workflowUrl, "utf8");
 
   await t.test("step display names may change", () => {
-    const renamed = workflow.replace("name: Run frontend tests", "name: Test the frontend");
+    const renamed = workflow.replace(
+      "name: Run frontend tests",
+      "name: Explain why service-role credentials are forbidden",
+    );
 
     assert.notEqual(renamed, workflow, "rename mutation had no effect");
     assert.doesNotThrow(() => assertWorkflowContract(renamed));
@@ -206,9 +225,14 @@ test("Pages workflow rejects unsafe structural mutations", async (t) => {
       error: /secrets or service-role credentials/,
     },
     {
+      name: "build permission missing Pages read access",
+      mutate: (source) => source.replace("  pages: read\n", ""),
+      error: /contents and Pages read only/,
+    },
+    {
       name: "broadened workflow permissions",
       mutate: (source) => source.replace("  contents: read\n", "  contents: write\n"),
-      error: /contents read only/,
+      error: /contents and Pages read only/,
     },
     {
       name: "broadened deploy permissions",

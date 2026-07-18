@@ -48,7 +48,7 @@ https://i-am-absent.github.io/seqtrak-chord-manager/
 - `Missing required GitHub Pages variables`: Repository Variablesの名前と空欄を確認し、値をログへ貼り付けず手動再実行する
 - test failure: Actionsログで最初に失敗したテストをローカルで再現し、修正を別コミットにする
 - build failure: Node.js 20.19以上で`npm ci && npm run build`を再現する
-- Pages permission failure: Pages SourceがGitHub Actionsであることと、workflowの`pages: write`、`id-token: write`を確認する
+- Pages permission failure: Pages SourceがGitHub Actionsであることと、buildの`contents: read`、`pages: read`、deployの`pages: write`、`id-token: write`を確認する
 - 404またはasset failure: 公開URLに`/seqtrak-chord-manager/`が含まれ、`dist/index.html`のasset URLも同じprefixであることを確認する
 
 失敗した実行は新しいartifactを公開しないため、直前に成功したサイトを維持する。Supabase障害やschema変更は`docs/operations/supabase-sharing-backend.md`に従って切り分ける。
