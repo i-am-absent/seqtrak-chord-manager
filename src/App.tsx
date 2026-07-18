@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPreviewEngine, type PreviewEngine } from "./audio/previewEngine";
 import { ChordGrid } from "./components/ChordGrid";
 import { DevicePanel, type DeviceStatus } from "./components/DevicePanel";
 import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
+import { PublishPackDialog } from "./components/PublishPackDialog";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { SharedPackBrowser } from "./components/SharedPackBrowser";
 import { createEditorState, editorReducer } from "./domain/packEditor";
@@ -22,10 +23,16 @@ import {
 import type { MidiInputLike, MidiOutputLike } from "./midi/midiTypes";
 import { SeqtrakClient } from "./midi/seqtrakClient";
 import { readPackFromSeqtrak, writePackToSeqtrak } from "./midi/deviceWorkflow";
+import {
+  editablePackFingerprint,
+  toEditablePack,
+  validateEditablePack
+} from "./sharing/editablePack";
+import { PackOwnershipPersistenceError } from "./sharing/errors";
 import type { PackRepository } from "./sharing/packRepository";
 import { sharedPackToChordPack } from "./sharing/sharedPackToChordPack";
 import { createSupabasePackRepository } from "./sharing/supabasePackRepository";
-import type { PublicPack } from "./sharing/types";
+import type { EditablePack, PublicPack } from "./sharing/types";
 
 export interface AppProps {
   packRepository?: PackRepository;
@@ -42,6 +49,14 @@ export default function App({
 }: AppProps = {}) {
   const [state, dispatch] = useReducer(editorReducer, createEditorState(createDefaultPack()));
   const [activeView, setActiveView] = useState<"editor" | "shared-packs">("editor");
+  const [publicationSnapshot, setPublicationSnapshot] = useState<EditablePack | null>(null);
+  const [publicationSubmitting, setPublicationSubmitting] = useState(false);
+  const [publicationError, setPublicationError] = useState("");
+  const [publicationNotice, setPublicationNotice] = useState<{
+    message: string;
+    warning: boolean;
+  } | null>(null);
+  const [lastPublishedFingerprint, setLastPublishedFingerprint] = useState<string | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("disconnected");
   const [midiInputs, setMidiInputs] = useState<MidiInputLike[]>([]);
   const [midiOutputs, setMidiOutputs] = useState<MidiOutputLike[]>([]);
@@ -67,6 +82,9 @@ export default function App({
   const keyUnsubscribeRef = useRef<(() => void) | null>(null);
   const stateUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionGenerationRef = useRef(0);
+  const publishTriggerRef = useRef<HTMLButtonElement>(null);
+  const publicationGenerationRef = useRef(0);
+  const publicationInFlightRef = useRef(false);
   const previewEngineRef = useRef<PreviewEngine | null>(null);
   const getPreviewEngine = useCallback(() => {
     previewEngineRef.current ??= createPreviewEngine();
@@ -75,6 +93,12 @@ export default function App({
   const selectedChord = state.pack.chords.find(
     (chord) => chord.slotIndex === state.selectedSlotIndex
   );
+  const currentEditablePack = useMemo(() => toEditablePack(state.pack), [state.pack]);
+  const currentPublicationFingerprint = useMemo(
+    () => editablePackFingerprint(currentEditablePack),
+    [currentEditablePack]
+  );
+  const alreadyPublished = lastPublishedFingerprint === currentPublicationFingerprint;
 
   const releaseClient = useCallback(() => {
     connectionGenerationRef.current += 1;
@@ -88,6 +112,9 @@ export default function App({
   }, []);
 
   useEffect(() => releaseClient, [releaseClient]);
+  useEffect(() => () => {
+    publicationGenerationRef.current += 1;
+  }, []);
 
   if (!selectedChord) {
     throw new Error(`Selected slot ${state.selectedSlotIndex} does not exist in this pack.`);
@@ -318,6 +345,62 @@ export default function App({
     setActiveView("editor");
   }, []);
 
+  const handleOpenPublish = useCallback(() => {
+    const next = toEditablePack(state.pack);
+    const errors = validateEditablePack(next);
+    if (errors.length) {
+      dispatch({ type: "setMessage", message: errors[0] });
+      return;
+    }
+    setPublicationError("");
+    setPublicationSnapshot(next);
+  }, [state.pack]);
+
+  const handleCancelPublish = useCallback(() => {
+    if (publicationInFlightRef.current) return;
+    setPublicationError("");
+    setPublicationSnapshot(null);
+  }, []);
+
+  const completePublication = useCallback((next: EditablePack, warning: boolean) => {
+    setLastPublishedFingerprint(editablePackFingerprint(next));
+    setPublicationSubmitting(false);
+    setPublicationError("");
+    setPublicationSnapshot(null);
+    setPublicationNotice({
+      warning,
+      message: warning
+        ? `Published “${next.packName}”, but ownership could not be saved. This browser cannot update or delete it later.`
+        : `Published “${next.packName}” to Shared Packs.`
+    });
+  }, []);
+
+  const handleConfirmPublish = useCallback(async () => {
+    if (!publicationSnapshot || publicationInFlightRef.current) return;
+    const next = publicationSnapshot;
+    const generation = ++publicationGenerationRef.current;
+    publicationInFlightRef.current = true;
+    setPublicationSubmitting(true);
+    setPublicationError("");
+    try {
+      await getPackRepository().createPack(next);
+      if (generation !== publicationGenerationRef.current) return;
+      publicationInFlightRef.current = false;
+      completePublication(next, false);
+    } catch (error) {
+      if (generation !== publicationGenerationRef.current) return;
+      publicationInFlightRef.current = false;
+      if (error instanceof PackOwnershipPersistenceError) {
+        completePublication(next, true);
+      } else {
+        setPublicationSubmitting(false);
+        setPublicationError(
+          error instanceof Error ? error.message : "Failed to publish shared pack."
+        );
+      }
+    }
+  }, [completePublication, getPackRepository, publicationSnapshot]);
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -325,22 +408,38 @@ export default function App({
           <p className="eyebrow">SEQTRAK</p>
           <h1>Chord Manager</h1>
         </div>
-        <nav className="view-switch" aria-label="Application view">
-          <button
-            type="button"
-            aria-pressed={activeView === "editor"}
-            onClick={() => setActiveView("editor")}
-          >
-            Editor
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeView === "shared-packs"}
-            onClick={() => setActiveView("shared-packs")}
-          >
-            Shared Packs
-          </button>
-        </nav>
+        <div className="top-actions">
+          <nav className="view-switch" aria-label="Application view">
+            <button
+              type="button"
+              aria-pressed={activeView === "editor"}
+              onClick={() => setActiveView("editor")}
+            >
+              Editor
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeView === "shared-packs"}
+              onClick={() => setActiveView("shared-packs")}
+            >
+              Shared Packs
+            </button>
+          </nav>
+          {activeView === "editor" ? (
+            <div className="publish-trigger-group">
+              <button
+                className="publish-trigger"
+                type="button"
+                ref={publishTriggerRef}
+                disabled={alreadyPublished}
+                onClick={handleOpenPublish}
+              >
+                Publish
+              </button>
+              {alreadyPublished ? <span>This version is already shared.</span> : null}
+            </div>
+          ) : null}
+        </div>
       </header>
 
       {activeView === "editor" ? (
@@ -389,6 +488,20 @@ export default function App({
           </p>
         ) : null}
 
+        {publicationNotice ? (
+          <div
+            className={publicationNotice.warning
+              ? "publication-notice warning"
+              : "publication-notice"}
+            role="status"
+          >
+            <span>{publicationNotice.message}</span>
+            <button type="button" onClick={() => setActiveView("shared-packs")}>
+              View Shared Packs
+            </button>
+          </div>
+        ) : null}
+
         <Keyboard88
           activeNotes={selectedChord.notes}
           keyOffset={seqtrakKeyOffset}
@@ -427,6 +540,16 @@ export default function App({
           />
         </section>
       )}
+      {publicationSnapshot ? (
+        <PublishPackDialog
+          snapshot={publicationSnapshot}
+          submitting={publicationSubmitting}
+          error={publicationError}
+          trigger={publishTriggerRef}
+          onCancel={handleCancelPublish}
+          onConfirm={() => void handleConfirmPublish()}
+        />
+      ) : null}
     </main>
   );
 }

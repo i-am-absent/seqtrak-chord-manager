@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { act, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createDefaultPack } from "./domain/music";
+import * as editablePack from "./sharing/editablePack";
+import { PackOwnershipPersistenceError } from "./sharing/errors";
 import type { PackRepository } from "./sharing/packRepository";
-import type { PublicPack } from "./sharing/types";
+import type { EditablePack, PublicPack } from "./sharing/types";
 import { renderApp } from "./test/render";
 
 function deferred<T>() {
@@ -28,6 +30,16 @@ function sharedPack(name = "Shared Starter"): PublicPack {
     id: "00000000-0000-4000-8000-000000000001",
     createdAt: "2026-07-18T00:00:00.000Z",
     updatedAt: "2026-07-18T00:00:00.000Z",
+    reportedCount: 0
+  };
+}
+
+function createdPublicPack(editable: EditablePack): PublicPack {
+  return {
+    ...editable,
+    id: "00000000-0000-4000-8000-000000000099",
+    createdAt: "2026-07-18T12:00:00.000Z",
+    updatedAt: "2026-07-18T12:00:00.000Z",
     reportedCount: 0
   };
 }
@@ -96,6 +108,9 @@ vi.mock("./midi/deviceWorkflow", () => ({
 describe("App", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
     midiMocks.keyCallback = undefined;
     midiMocks.keyErrorCallback = undefined;
     midiMocks.stateCallback = undefined;
@@ -738,5 +753,133 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Editor" }));
     expect(screen.getByLabelText("Pack metadata")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect SEQTRAK" })).toBeEnabled();
+  });
+
+  it("validates before opening publication confirmation", async () => {
+    const repository = sharingRepository(sharedPack());
+    renderApp(<App packRepository={repository} />);
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Pack name is required.")).toBeInTheDocument();
+    expect(repository.createPack).not.toHaveBeenCalled();
+  });
+
+  it("cancels without publishing or changing selection", async () => {
+    const repository = sharingRepository(sharedPack());
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(repository.createPack).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toHaveClass("selected");
+  });
+
+  it("publishes once, stays in Editor, and blocks exact successful content", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (editable) => createdPublicPack(editable));
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await waitFor(() => expect(repository.createPack).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("Published “Untitled Pack” to Shared Packs.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Pack metadata")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+    expect(screen.getByText("This version is already shared.")).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Changed");
+    expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled();
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Untitled Pack");
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
+  it("retries the same snapshot and synchronously guards duplicate submit", async () => {
+    const pending = deferred<PublicPack>();
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack)
+      .mockRejectedValueOnce(new Error("Sharing is unavailable."))
+      .mockReturnValueOnce(pending.promise);
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sharing is unavailable.");
+    const retry = screen.getByRole("button", { name: "Publish shared pack" });
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(repository.createPack).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(repository.createPack).mock.calls[1][0])
+      .toEqual(vi.mocked(repository.createPack).mock.calls[0][0]);
+    await act(async () => pending.resolve(createdPublicPack(
+      vi.mocked(repository.createPack).mock.calls[1][0]
+    )));
+  });
+
+  it("treats ownership-save failure as published without retry", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (editable) => {
+      throw new PackOwnershipPersistenceError(createdPublicPack(editable));
+    });
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    expect(await screen.findByText(
+      "Published “Untitled Pack”, but ownership could not be saved. This browser cannot update or delete it later."
+    )).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+    expect(repository.createPack).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a refreshed Shared Packs view after success", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (editable) => createdPublicPack(editable));
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await userEvent.click(await screen.findByRole("button", { name: "View Shared Packs" }));
+    await waitFor(() => expect(repository.listPacks).toHaveBeenCalledWith({ limit: 20 }));
+    expect(screen.getByRole("heading", { name: "Shared Packs" })).toBeInTheDocument();
+  });
+
+  it("preserves MIDI, KEY, SCALE, track, pack, and slot while publishing", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (editable) => createdPublicPack(editable));
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    act(() => midiMocks.keyCallback?.(1));
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await screen.findByText(/Published/);
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByLabelText("Target track")).toHaveValue("7");
+    expect(screen.getByDisplayValue("Imported SYNTH1 Scale 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toHaveClass("selected");
+    expect(screen.getByRole("button", { name: "D#4" })).toHaveAttribute("aria-pressed", "true");
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
+  });
+
+  it("ignores publication completion after unmount", async () => {
+    const pending = deferred<PublicPack>();
+    const repository = sharingRepository(sharedPack());
+    const fingerprint = vi.spyOn(editablePack, "editablePackFingerprint");
+    vi.mocked(repository.createPack).mockReturnValueOnce(pending.promise);
+    const view = renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    view.unmount();
+    const callsBeforeCompletion = fingerprint.mock.calls.length;
+    await act(async () => pending.resolve(createdPublicPack(
+      vi.mocked(repository.createPack).mock.calls[0][0]
+    )));
+    expect(fingerprint).toHaveBeenCalledTimes(callsBeforeCompletion);
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
   });
 });
