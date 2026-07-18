@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 
 const workflowUrl = new URL("../.github/workflows/deploy-pages.yml", import.meta.url);
 
@@ -12,11 +12,9 @@ const repositoryVariables = {
 
 const expectedBuildSteps = [
   {
-    name: "Check out repository",
     uses: "actions/checkout@v6",
   },
   {
-    name: "Set up Node.js",
     uses: "actions/setup-node@v6",
     with: {
       "node-version": 20,
@@ -24,43 +22,39 @@ const expectedBuildSteps = [
     },
   },
   {
-    name: "Install dependencies",
     run: "npm ci",
   },
   {
-    name: "Validate production variables",
     run: "npm run validate:pages-env",
     env: repositoryVariables,
   },
   {
-    name: "Run frontend tests",
     run: "npm test",
   },
   {
-    name: "Run static-server tests",
     run: "npm run test:server",
   },
   {
-    name: "Run deployment contract tests",
     run: "npm run test:deployment",
   },
   {
-    name: "Build production site",
     run: "npm run build",
     env: repositoryVariables,
   },
   {
-    name: "Configure GitHub Pages",
     uses: "actions/configure-pages@v5",
   },
   {
-    name: "Upload GitHub Pages artifact",
     uses: "actions/upload-pages-artifact@v4",
     with: {
       path: "dist",
     },
   },
 ];
+
+function semanticSteps(steps) {
+  return steps.map(({ name: _displayName, ...semanticStep }) => semanticStep);
+}
 
 function assertWorkflowContract(source) {
   const workflow = parse(source);
@@ -96,7 +90,7 @@ function assertWorkflowContract(source) {
     "workflow permissions must grant contents read only",
   );
   assert.deepEqual(
-    Object.keys(workflow.jobs ?? {}),
+    Object.keys(workflow.jobs ?? {}).sort(),
     ["build", "deploy"],
     "workflow must contain only build and deploy jobs",
   );
@@ -105,7 +99,7 @@ function assertWorkflowContract(source) {
   assert.equal(build["runs-on"], "ubuntu-latest", "build job runner changed");
   assert.equal(build.permissions, undefined, "build job must not broaden permissions");
   assert.deepEqual(
-    build.steps,
+    semanticSteps(build.steps),
     expectedBuildSteps,
     "build checks, variable sources, and Pages actions must remain in the required order",
   );
@@ -126,10 +120,9 @@ function assertWorkflowContract(source) {
     "deploy job must target the github-pages environment",
   );
   assert.deepEqual(
-    deploy.steps,
+    semanticSteps(deploy.steps),
     [
       {
-        name: "Deploy GitHub Pages",
         id: "deployment",
         uses: "actions/deploy-pages@v4",
       },
@@ -142,6 +135,24 @@ test("Pages workflow verifies and deploys master builds", async () => {
   const workflow = await readFile(workflowUrl, "utf8");
 
   assertWorkflowContract(workflow);
+});
+
+test("Pages workflow accepts harmless presentation changes", async (t) => {
+  const workflow = await readFile(workflowUrl, "utf8");
+
+  await t.test("step display names may change", () => {
+    const renamed = workflow.replace("name: Run frontend tests", "name: Test the frontend");
+
+    assert.notEqual(renamed, workflow, "rename mutation had no effect");
+    assert.doesNotThrow(() => assertWorkflowContract(renamed));
+  });
+
+  await t.test("job declarations may be reordered", () => {
+    const parsed = parse(workflow);
+    parsed.jobs = { deploy: parsed.jobs.deploy, build: parsed.jobs.build };
+
+    assert.doesNotThrow(() => assertWorkflowContract(stringify(parsed)));
+  });
 });
 
 test("Pages workflow rejects unsafe structural mutations", async (t) => {
