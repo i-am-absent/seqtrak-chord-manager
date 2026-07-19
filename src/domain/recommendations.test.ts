@@ -1,7 +1,97 @@
 import { describe, expect, it } from "vitest";
-import { getRecommendedChordNames, getVoicingVariations } from "./recommendations";
+import { canonicalChordKey } from "./chordSymbols";
+import {
+  getChordRecommendations,
+  getRecommendedChordNames,
+  getVoicingVariations
+} from "./recommendations";
+
+const recommendationInput = {
+  keyRoot: 0,
+  mode: "major" as const,
+  sourceDisplayName: "Cmaj7",
+  sourceRelativeNotes: [60, 64, 67, 71],
+  keyOffset: 0
+};
 
 describe("recommendations", () => {
+  it("returns twelve balanced canonical candidates in alternating category order", () => {
+    const result = getChordRecommendations(recommendationInput);
+
+    expect(result.candidates).toHaveLength(12);
+    expect(new Set(result.candidates.map((item) => canonicalChordKey(item.chord))).size).toBe(12);
+    expect(result.candidates.map((item) => item.category)).toEqual([
+      "conventional", "chromatic", "conventional", "chromatic",
+      "conventional", "chromatic", "conventional", "chromatic",
+      "conventional", "chromatic", "conventional", "chromatic"
+    ]);
+    expect(result.candidates.some((item) => canonicalChordKey(item.chord) === "0:maj7")).toBe(false);
+  });
+
+  it("uses the source chord to change the ordered recommendations", () => {
+    const c = getChordRecommendations(recommendationInput);
+    const g = getChordRecommendations({
+      ...recommendationInput,
+      sourceDisplayName: "G7",
+      sourceRelativeNotes: [67, 71, 74, 77]
+    });
+
+    expect(c.candidates.map((item) => item.name)).not.toEqual(
+      g.candidates.map((item) => item.name)
+    );
+  });
+
+  it("changes deterministically with key and mode", () => {
+    const major = getChordRecommendations(recommendationInput).candidates.map((item) => item.name);
+    const minor = getChordRecommendations({
+      ...recommendationInput,
+      mode: "minor"
+    }).candidates.map((item) => item.name);
+    const transposed = getChordRecommendations({
+      ...recommendationInput,
+      keyRoot: 5
+    }).candidates.map((item) => item.name);
+
+    expect(minor).not.toEqual(major);
+    expect(transposed).not.toEqual(major);
+    expect(getChordRecommendations(recommendationInput).candidates.map((item) => item.name)).toEqual(major);
+  });
+
+  it("covers every named conventional and chromatic rule family across fixtures", () => {
+    const fixtures = ["Cmaj7", "Dm7", "G7", "Abmaj7", "F#dim7"];
+    const ids = new Set(fixtures.flatMap((sourceDisplayName) =>
+      getChordRecommendations({ ...recommendationInput, sourceDisplayName })
+        .candidates.map((item) => item.ruleId)
+    ));
+
+    for (const id of [
+      "functional", "circle-fifths", "dominant-resolution", "predominant-dominant",
+      "deceptive", "relative", "stepwise", "common-tone", "secondary-dominant",
+      "tritone-substitution", "modal-interchange", "chromatic-mediant", "backdoor",
+      "neapolitan", "common-tone-diminished", "parallel-mode", "altered-dominant",
+      "chromatic-semitone"
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it("returns concise reasons without exposing internal scores", () => {
+    const candidates = getChordRecommendations(recommendationInput).candidates;
+
+    expect(candidates.every((item) => item.reason.length > 0 && item.reason.length <= 32)).toBe(true);
+    expect(candidates.every((item) => !("score" in item))).toBe(true);
+  });
+
+  it("uses note inference when the source symbol is unsupported", () => {
+    const result = getChordRecommendations({
+      ...recommendationInput,
+      sourceDisplayName: "unknown"
+    });
+
+    expect(result.source).toMatchObject({ inferred: true, name: "Cmaj7" });
+    expect(result.candidates).toHaveLength(12);
+  });
+
   it("returns key-relative next chord names", () => {
     const names = getRecommendedChordNames("C", "Cmaj7").map((item) => item.name);
     expect(names).toEqual(["Dm7", "G7", "Am7", "Fmaj7", "Em7", "A7"]);
