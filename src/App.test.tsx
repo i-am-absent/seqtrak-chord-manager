@@ -931,4 +931,80 @@ describe("App", () => {
     expect(fingerprint).toHaveBeenCalledTimes(callsBeforeCompletion);
     expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
   });
+
+  it("enables Reset only after a resettable Editor value changes and cancel preserves it", async () => {
+    renderApp(<App />);
+    const reset = screen.getByRole("button", { name: "Reset" });
+    expect(reset).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Changed");
+    expect(reset).toBeEnabled();
+    await userEvent.click(reset);
+    expect(screen.getByRole("dialog", { name: "Reset editor?" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByDisplayValue("Changed")).toBeInTheDocument();
+    expect(reset).toHaveFocus();
+  });
+
+  it("also enables Reset for a non-default slot or known SCALE", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+  });
+
+  it("resets pack, slot, and SCALE while preserving MIDI, ports, track, and live KEY", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Target track"), "8");
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    act(() => midiMocks.keyCallback?.(3));
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset editor" }));
+
+    expect(screen.getByDisplayValue("Untitled Pack")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 1 C" })).toHaveClass("selected");
+    expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByLabelText("Target track")).toHaveValue("8");
+    expect(screen.getByRole("button", { name: "D#4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Editor reset to the default pack.")).toBeInTheDocument();
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
+  });
+
+  it("preserves the last-published fingerprint when Reset restores identical content", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (pack) => createdPublicPack(pack));
+    renderApp(<App packRepository={repository} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await screen.findByText("Published “Untitled Pack” to Shared Packs.");
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Changed");
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset editor" }));
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+    expect(screen.queryByText(/Published “Untitled Pack”/)).not.toBeInTheDocument();
+  });
+
+  it("disables Reset while publication is submitting", async () => {
+    const pending = deferred<PublicPack>();
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockReturnValue(pending.promise);
+    renderApp(<App packRepository={repository} />);
+    await userEvent.clear(screen.getByLabelText("Pack name"));
+    await userEvent.type(screen.getByLabelText("Pack name"), "Changed");
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
+    await act(async () => pending.resolve(createdPublicPack(
+      vi.mocked(repository.createPack).mock.calls[0][0]
+    )));
+  });
 });

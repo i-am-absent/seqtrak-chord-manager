@@ -6,6 +6,7 @@ import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { PublishPackDialog } from "./components/PublishPackDialog";
 import { RecommendationPanel } from "./components/RecommendationPanel";
+import { ResetEditorDialog } from "./components/ResetEditorDialog";
 import { SharedPackBrowser } from "./components/SharedPackBrowser";
 import { createEditorState, editorReducer } from "./domain/packEditor";
 import {
@@ -65,6 +66,8 @@ function publicationErrorMessage(error: unknown): string {
   return "Failed to publish shared pack.";
 }
 
+const defaultEditableFingerprint = editablePackFingerprint(toEditablePack(createDefaultPack()));
+
 export default function App({
   packRepository,
   createPackRepository = createProductionPackRepository
@@ -79,6 +82,7 @@ export default function App({
     warning: boolean;
   } | null>(null);
   const [lastPublishedFingerprint, setLastPublishedFingerprint] = useState<string | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>("disconnected");
   const [midiInputs, setMidiInputs] = useState<MidiInputLike[]>([]);
   const [midiOutputs, setMidiOutputs] = useState<MidiOutputLike[]>([]);
@@ -105,6 +109,7 @@ export default function App({
   const stateUnsubscribeRef = useRef<(() => void) | null>(null);
   const connectionGenerationRef = useRef(0);
   const publishTriggerRef = useRef<HTMLButtonElement>(null);
+  const resetTriggerRef = useRef<HTMLButtonElement>(null);
   const publicationGenerationRef = useRef(0);
   const publicationInFlightRef = useRef(false);
   const previewEngineRef = useRef<PreviewEngine | null>(null);
@@ -121,6 +126,10 @@ export default function App({
     [currentEditablePack]
   );
   const alreadyPublished = lastPublishedFingerprint === currentPublicationFingerprint;
+  const resetAvailable =
+    currentPublicationFingerprint !== defaultEditableFingerprint ||
+    state.selectedSlotIndex !== 1 ||
+    currentScale !== null;
 
   const releaseClient = useCallback(() => {
     connectionGenerationRef.current += 1;
@@ -384,6 +393,17 @@ export default function App({
     setPublicationSnapshot(null);
   }, []);
 
+  const handleConfirmReset = useCallback(() => {
+    setCurrentScale(null);
+    setPublicationNotice(null);
+    dispatch({
+      type: "replacePack",
+      pack: createDefaultPack(),
+      message: "Editor reset to the default pack."
+    });
+    setResetDialogOpen(false);
+  }, []);
+
   const completePublication = useCallback((next: EditablePack, warning: boolean) => {
     setLastPublishedFingerprint(editablePackFingerprint(next));
     setPublicationSubmitting(false);
@@ -447,6 +467,15 @@ export default function App({
           </nav>
           {activeView === "editor" ? (
             <div className="publish-trigger-group">
+              <button
+                className="reset-trigger"
+                type="button"
+                ref={resetTriggerRef}
+                disabled={!resetAvailable || publicationSubmitting}
+                onClick={() => setResetDialogOpen(true)}
+              >
+                Reset
+              </button>
               <button
                 className="publish-trigger"
                 type="button"
@@ -568,6 +597,13 @@ export default function App({
           trigger={publishTriggerRef}
           onCancel={handleCancelPublish}
           onConfirm={() => void handleConfirmPublish()}
+        />
+      ) : null}
+      {resetDialogOpen ? (
+        <ResetEditorDialog
+          trigger={resetTriggerRef}
+          onCancel={() => setResetDialogOpen(false)}
+          onConfirm={handleConfirmReset}
         />
       ) : null}
     </main>
