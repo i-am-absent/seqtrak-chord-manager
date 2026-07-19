@@ -376,6 +376,15 @@ export default function App({
     setActiveView("editor");
   }, []);
 
+  const handleDeletedSharedPack = useCallback((pack: PublicPack) => {
+    const deletedFingerprint = editablePackFingerprint(
+      toEditablePack(sharedPackToChordPack(pack))
+    );
+    setLastPublishedFingerprint((current) =>
+      current === deletedFingerprint ? null : current
+    );
+  }, []);
+
   const handleOpenPublish = useCallback(() => {
     const next = toEditablePack(state.pack);
     const errors = validateEditablePack(next);
@@ -586,7 +595,7 @@ export default function App({
           <SharedPackBrowser
             getRepository={getPackRepository}
             onLoadPack={handleLoadSharedPack}
-            onDeletedPack={() => undefined}
+            onDeletedPack={handleDeletedSharedPack}
           />
         </section>
       )}

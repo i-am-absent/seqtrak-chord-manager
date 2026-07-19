@@ -14,6 +14,7 @@ import {
   SharingValidationError
 } from "./sharing/errors";
 import type { PackRepository } from "./sharing/packRepository";
+import { toEditablePack } from "./sharing/editablePack";
 import type { EditablePack, PublicPack } from "./sharing/types";
 import { renderApp } from "./test/render";
 
@@ -896,6 +897,72 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("button", { name: "View Shared Packs" }));
     await waitFor(() => expect(repository.listPacks).toHaveBeenCalledWith({ limit: 20 }));
     expect(screen.getByRole("heading", { name: "Shared Packs" })).toBeInTheDocument();
+  });
+
+  it("re-enables Publish after deleting the identical last-published pack", async () => {
+    const published = createdPublicPack(toEditablePack(createDefaultPack()));
+    const repository = sharingRepository(published);
+    vi.mocked(repository.ownsPack).mockReturnValue(true);
+    vi.mocked(repository.createPack).mockResolvedValue(published);
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    renderApp(<App packRepository={repository} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await userEvent.click(await screen.findByRole("button", { name: "View Shared Packs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Untitled Pack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled();
+  });
+
+  it("keeps Publish disabled after deleting a different owned pack", async () => {
+    const other = sharedPack("Different Owned Pack");
+    const repository = sharingRepository(other);
+    vi.mocked(repository.ownsPack).mockReturnValue(true);
+    vi.mocked(repository.createPack).mockImplementation(async (pack) => createdPublicPack(pack));
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    renderApp(<App packRepository={repository} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await userEvent.click(await screen.findByRole("button", { name: "View Shared Packs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Different Owned Pack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
+  it("preserves Editor and SEQTRAK state while deleting an owned pack", async () => {
+    const repository = sharingRepository(sharedPack("Owned"));
+    vi.mocked(repository.ownsPack).mockReturnValue(true);
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    renderApp(<App packRepository={repository} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Target track"), "8");
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    act(() => midiMocks.keyCallback?.(1));
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+
+    expect(screen.getByText("Status: connected")).toBeInTheDocument();
+    expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByLabelText("Target track")).toHaveValue("8");
+    expect(screen.getByDisplayValue("Imported SYNTH1 Scale 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toHaveClass("selected");
+    expect(screen.getByRole("button", { name: "D#4" })).toHaveAttribute("aria-pressed", "true");
+    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
   });
 
   it("preserves MIDI, KEY, SCALE, track, pack, and slot while publishing", async () => {
