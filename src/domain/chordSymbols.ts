@@ -52,6 +52,7 @@ const QUALITY_SUFFIX: Record<ChordQuality, string> = {
 const SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const FLAT_KEY_ROOTS = new Set([3, 5, 8, 10]);
+const MINOR_FLAT_KEY_ROOTS = new Set([0, 2, 3, 5, 7, 8, 10]);
 
 export function parseChordSymbol(symbol: string): CanonicalChord | null {
   const normalized = symbol.trim().replaceAll("♭", "b").replaceAll("♯", "#");
@@ -91,10 +92,11 @@ export function formatChordSymbol(
   mode: RecommendationMode,
   spellingHint: SpellingHint
 ): string {
-  void mode;
   const pitchClass = normalizePitchClass(chord.root);
   const useFlats = spellingHint === "flat"
-    || (spellingHint === "key" && FLAT_KEY_ROOTS.has(normalizePitchClass(keyRoot)));
+    || (spellingHint === "key" && (
+      mode === "minor" ? MINOR_FLAT_KEY_ROOTS : FLAT_KEY_ROOTS
+    ).has(normalizePitchClass(keyRoot)));
   const rootName = (useFlats ? FLAT_NAMES : SHARP_NAMES)[pitchClass];
   return `${rootName}${QUALITY_SUFFIX[chord.quality]}`;
 }

@@ -129,4 +129,19 @@ describe("recommendations", () => {
     expect(result.candidates).toHaveLength(12);
   });
 
+  it("prefers a new quality family when base musical ranking axes tie", () => {
+    const chromatic = getChordRecommendations({
+      ...recommendationInput,
+      sourceDisplayName: "Csus2",
+      keyRoot: 1,
+      mode: "major",
+    }).candidates.filter((item) => item.category === "chromatic");
+
+    expect(chromatic.slice(0, 3).map((item) => item.ruleId)).toEqual([
+      "secondary-dominant",
+      "modal-interchange",
+      "tritone-substitution",
+    ]);
+  });
+
 });

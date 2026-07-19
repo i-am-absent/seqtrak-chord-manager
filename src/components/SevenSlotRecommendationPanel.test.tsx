@@ -89,6 +89,53 @@ describe("SevenSlotRecommendationPanel", () => {
     expect(onApply).not.toHaveBeenCalled();
   });
 
+  it("uses roving tab focus with wrapped arrows and Home/End selection", async () => {
+    const onCandidateNotesChange = vi.fn();
+    renderApp(panel({ onCandidateNotesChange }));
+    const tabs = screen.getAllByRole("tab");
+
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1, -1, -1, -1]);
+
+    await userEvent.click(screen.getByRole("button", { name: "More recommendations" }));
+    await selectFirstVariation();
+    onCandidateNotesChange.mockClear();
+    tabs[0].focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(tabs[6]).toHaveFocus();
+    expect(tabs[6]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Select a recommendation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More recommendations" })).toBeInTheDocument();
+    expect(onCandidateNotesChange).toHaveBeenLastCalledWith([]);
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(tabs[0]).toHaveFocus();
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.keyboard("{End}");
+    expect(tabs[6]).toHaveFocus();
+    expect(tabs[6]).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.keyboard("{Home}");
+    expect(tabs[0]).toHaveFocus();
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("exposes recommendation and variation selection with aria-pressed", async () => {
+    renderApp(panel());
+    const recommendations = screen.getAllByRole("button", { name: /recommendation:/i });
+
+    expect(recommendations.every((button) => button.getAttribute("aria-pressed") === "false"))
+      .toBe(true);
+    await userEvent.click(recommendations[0]);
+    expect(recommendations[0]).toHaveAttribute("aria-pressed", "true");
+
+    const variations = screen.getAllByRole("button", { name: /preview variation/i });
+    expect(variations.every((button) => button.getAttribute("aria-pressed") === "false"))
+      .toBe(true);
+    await userEvent.click(variations[0]);
+    expect(variations[0]).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("opens four variations on candidate selection without previewing or applying", async () => {
     const onPreview = vi.fn();
     const onApply = vi.fn();

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import {
   chromaticKeys,
   type ChordSlot,
@@ -42,6 +49,7 @@ export function SevenSlotRecommendationPanel({
   const [selectedVariation, setSelectedVariation] = useState<VoicingVariation | null>(null);
 
   const candidateNotesCallbackRef = useRef(onCandidateNotesChange);
+  const sourceTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   candidateNotesCallbackRef.current = onCandidateNotesChange;
 
   const clearPreviewSelection = useCallback(
@@ -100,6 +108,26 @@ export function SevenSlotRecommendationPanel({
   function selectSource(slotIndex: number) {
     clearPreviewSelection({ collapseMore: true });
     setSourceSlotIndex(slotIndex);
+  }
+
+  function handleSourceTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + chords.length) % chords.length;
+    } else if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % chords.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = chords.length - 1;
+    }
+
+    if (nextIndex === null || !chords[nextIndex]) {
+      return;
+    }
+    event.preventDefault();
+    selectSource(chords[nextIndex].slotIndex);
+    sourceTabRefs.current[nextIndex]?.focus();
   }
 
   function selectRecommendation(recommendation: ChordRecommendation) {
@@ -162,7 +190,7 @@ export function SevenSlotRecommendationPanel({
       </div>
 
       <div className="recommendation-tabs" role="tablist" aria-label="Recommendation sources">
-        {chords.map((chord) => (
+        {chords.map((chord, index) => (
           <button
             className="recommendation-tab"
             key={chord.slotIndex}
@@ -171,7 +199,12 @@ export function SevenSlotRecommendationPanel({
             type="button"
             aria-controls="recommendation-source-panel"
             aria-selected={sourceSlotIndex === chord.slotIndex}
+            tabIndex={sourceSlotIndex === chord.slotIndex ? 0 : -1}
+            ref={(element) => {
+              sourceTabRefs.current[index] = element;
+            }}
             onClick={() => selectSource(chord.slotIndex)}
+            onKeyDown={(event) => handleSourceTabKeyDown(event, index)}
           >
             {`Slot ${chord.slotIndex} — ${chord.displayName}`}
           </button>
@@ -204,6 +237,7 @@ export function SevenSlotRecommendationPanel({
                   }
                   key={`${recommendation.category}-${recommendation.ruleId}-${recommendation.name}`}
                   type="button"
+                  aria-pressed={recommendation === selectedRecommendation}
                   aria-label={`Recommendation: ${recommendation.name} — ${recommendation.reason}`}
                   onClick={() => selectRecommendation(recommendation)}
                 >
@@ -239,6 +273,7 @@ export function SevenSlotRecommendationPanel({
                   className={variation === selectedVariation ? "variation selected" : "variation"}
                   key={variation.variation}
                   type="button"
+                  aria-pressed={variation === selectedVariation}
                   aria-label={`Preview variation ${variation.variation} ${variation.label}`}
                   onClick={() => selectVariation(variation)}
                 >

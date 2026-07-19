@@ -40,6 +40,32 @@ describe("chord symbols", () => {
     expect(formatChordSymbol({ root: 6, quality: "7#11" }, 7, "major", "sharp")).toBe("F#7#11");
   });
 
+  it.each([
+    [0, 8, "Ab"],
+    [2, 10, "Bb"],
+    [5, 1, "Db"],
+    [7, 3, "Eb"]
+  ])("uses flat diatonic spellings in minor key root %i", (keyRoot, chordRoot, expected) => {
+    expect(formatChordSymbol({ root: chordRoot, quality: "major" }, keyRoot, "minor", "key"))
+      .toBe(expected);
+  });
+
+  it.each([
+    [4, 6, "F#"],
+    [11, 3, "D#"],
+    [1, 8, "G#"]
+  ])("uses sharp diatonic spellings in minor key root %i", (keyRoot, chordRoot, expected) => {
+    expect(formatChordSymbol({ root: chordRoot, quality: "major" }, keyRoot, "minor", "key"))
+      .toBe(expected);
+  });
+
+  it("preserves explicit accidental hints independently of mode", () => {
+    expect(formatChordSymbol({ root: 3, quality: "major" }, 0, "minor", "sharp"))
+      .toBe("D#");
+    expect(formatChordSymbol({ root: 6, quality: "major" }, 4, "minor", "flat"))
+      .toBe("Gb");
+  });
+
   it("deduplicates enharmonic spellings canonically", () => {
     expect(canonicalChordKey(parseChordSymbol("C#7")!))
       .toBe(canonicalChordKey(parseChordSymbol("Db7")!));

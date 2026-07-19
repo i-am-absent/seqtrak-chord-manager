@@ -270,8 +270,8 @@ export function getChordRecommendations(
     }
   });
 
-  const conventional = sortedPool(rankedByKey, "conventional");
-  const chromatic = sortedPool(rankedByKey, "chromatic");
+  const conventional = selectDiverse(rankedPool(rankedByKey, "conventional"), 6);
+  const chromatic = selectDiverse(rankedPool(rankedByKey, "chromatic"), 6);
   const usedKeys = new Set(rankedByKey.keys());
   fillFallbacks(conventional, "conventional", usedKeys, context, sourceKey);
   fillFallbacks(chromatic, "chromatic", usedKeys, context, sourceKey);
@@ -315,14 +315,27 @@ function rankRecommendation(
   };
 }
 
-function sortedPool(
+function rankedPool(
   recommendations: Map<string, RankedRecommendation>,
   category: RecommendationCategory
 ): RankedRecommendation[] {
   return [...recommendations.values()]
     .filter((item) => item.category === category)
-    .sort((left, right) => compareScores(left.score, right.score))
-    .slice(0, 6);
+    .sort((left, right) => compareScores(left.score, right.score));
+}
+
+function selectDiverse(
+  recommendations: readonly RankedRecommendation[],
+  limit: number,
+  initialSelection: readonly RankedRecommendation[] = []
+): RankedRecommendation[] {
+  const selected = [...initialSelection];
+  const remaining = [...recommendations];
+  while (selected.length < limit && remaining.length > 0) {
+    remaining.sort((left, right) => compareDiverseScores(left, right, selected));
+    selected.push(remaining.shift()!);
+  }
+  return selected;
 }
 
 function fillFallbacks(
@@ -352,11 +365,8 @@ function fillFallbacks(
       ));
     }
   }
-  fallbacks.sort((left, right) => compareScores(left.score, right.score));
-  for (const fallback of fallbacks) {
-    if (pool.length >= 6) {
-      break;
-    }
+  const selectedFallbacks = selectDiverse(fallbacks, 6, pool).slice(pool.length);
+  for (const fallback of selectedFallbacks) {
     const key = canonicalChordKey(fallback.chord);
     if (usedKeys.has(key)) {
       continue;
@@ -364,6 +374,61 @@ function fillFallbacks(
     pool.push(fallback);
     usedKeys.add(key);
   }
+}
+
+function compareDiverseScores(
+  left: RankedRecommendation,
+  right: RankedRecommendation,
+  selected: readonly RankedRecommendation[]
+): number {
+  for (let index = 0; index < 5; index += 1) {
+    const difference = left.score[index] - right.score[index];
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  const diversityDifference = diversityPenalty(left, selected) - diversityPenalty(right, selected);
+  if (diversityDifference !== 0) {
+    return diversityDifference;
+  }
+
+  for (let index = 5; index < left.score.length; index += 1) {
+    const difference = left.score[index] - right.score[index];
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
+
+function diversityPenalty(
+  candidate: RankedRecommendation,
+  selected: readonly RankedRecommendation[]
+): number {
+  const repeatedRoots = selected.filter((item) => item.chord.root === candidate.chord.root).length;
+  const family = qualityFamily(candidate.chord.quality);
+  const relatedQualities = selected.filter((item) => qualityFamily(item.chord.quality) === family).length;
+  return repeatedRoots * 2 + relatedQualities;
+}
+
+function qualityFamily(quality: ChordQuality): string {
+  if (["major", "maj7", "maj9", "add9", "6/9", "aug"].includes(quality)) {
+    return "major";
+  }
+  if (["minor", "m7", "m9"].includes(quality)) {
+    return "minor";
+  }
+  if (dominantLike.has(quality)) {
+    return "dominant";
+  }
+  if (["dim", "dim7", "m7b5"].includes(quality)) {
+    return "diminished";
+  }
+  if (quality === "sus2" || quality === "sus4") {
+    return "suspended";
+  }
+  return quality;
 }
 
 function toPublicRecommendation(item: RankedRecommendation): ChordRecommendation {
