@@ -50,10 +50,14 @@ it("opens modally and describes the fixed deletion target", () => {
   renderDialog();
 
   expect(screen.getByRole("dialog", { name: "Delete shared pack?" })).toHaveAttribute("open");
+  expect(screen.getByRole("dialog")).toHaveClass("delete-dialog");
   expect(screen.getByRole("heading", { name: "Delete shared pack?" })).toHaveFocus();
+  expect(screen.getByRole("heading", { name: "Delete shared pack?" }).parentElement)
+    .toHaveClass("delete-dialog-card");
   expect(screen.getByText("Owned Pack")).toBeInTheDocument();
   expect(screen.getByText("Ada")).toBeInTheDocument();
   expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Delete pack" })).toHaveClass("danger-action");
 });
 
 it("cancels from the Cancel button", async () => {

@@ -654,6 +654,76 @@ button.slot-card:hover {
   color: #ffffff;
 }
 
+.shared-browser .shared-delete-action,
+.delete-dialog .danger-action {
+  border-color: #ef4444;
+  background: #7f1d1d;
+  color: #ffffff;
+}
+
+.delete-dialog button {
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+  color: #1b1c1f;
+  cursor: pointer;
+  min-height: 38px;
+  padding: 7px 11px;
+}
+
+.delete-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.delete-dialog::backdrop {
+  background: rgb(2 8 23 / 72%);
+}
+
+.delete-dialog-card {
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid #cfd6e2;
+  border-radius: 1rem;
+  background: #ffffff;
+  color: #1b1c1f;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.delete-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.delete-error {
+  color: #991b1b;
+}
+
+.shared-delete-notice {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+}
+
+.shared-delete-notice.warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
 @media (max-width: 820px) {
   .top-bar {
     align-items: stretch;
@@ -732,6 +802,15 @@ button.slot-card:hover {
   }
 
   .reset-dialog-actions {
+    flex-direction: column;
+  }
+
+  .shared-browser .shared-delete-action,
+  .delete-dialog-actions button {
+    width: 100%;
+  }
+
+  .delete-dialog-actions {
     flex-direction: column;
   }
 }
