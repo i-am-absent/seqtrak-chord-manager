@@ -70,7 +70,7 @@ Reset does not make a device request or write to SEQTRAK.
 
 ### Delete workflow
 
-`SharedPackBrowser` owns the selected deletion target, deletion state, per-list notifications, deleted-ID suppression, and removal of the card. It renders Delete only when `getRepository().ownsPack(pack.id)` is true.
+`SharedPackBrowser` owns the selected deletion target, deletion state, per-list notifications, deleted-ID suppression, ownership-denied suppression, and removal of the card. It renders Delete only when `getRepository().ownsPack(pack.id)` is true and the ID has not been rejected for ownership during the mounted browser session.
 
 A dedicated `DeleteSharedPackDialog` receives a fixed `PublicPack` target. Retry always uses that target's ID even if other list state changes.
 
@@ -118,6 +118,8 @@ Confirmed Reset clears any visible publication success or warning notice and rep
 
 Each shared card evaluates ownership through `ownsPack(pack.id)`. Only an owned card renders a Delete action. A missing, corrupt, or cleared local ownership record means the action is absent. Ownership is a browser capability, not a public property of `PublicPack`.
 
+If deletion receives `PackOwnershipError`, the pack ID enters a mounted-session ownership-denied set. Delete stays hidden for that card for the rest of the `SharedPackBrowser` session even when stale local storage makes `ownsPack(pack.id)` continue to return `true`. A full unmount/remount clears this UI suppression and reevaluates repository ownership.
+
 ### Confirmation
 
 Activating Delete opens a modal with:
@@ -146,7 +148,7 @@ After repository success:
 - notify App with the deleted pack;
 - close the dialog and restore focus only if the trigger remains connected.
 
-If the list becomes empty, show `No shared packs yet.` The next Refresh remains the authoritative server resynchronization.
+If the loaded list becomes empty and `nextCursor` is `null`, show `No shared packs yet.` If `nextCursor` is non-null, keep the success notice and `Load more` visible without showing the empty message or fetching automatically. The user can load the next page explicitly. The next Refresh remains the authoritative server resynchronization.
 
 ### Deleted-ID suppression
 
@@ -170,7 +172,7 @@ If ownership disappears between rendering the action and confirming deletion, sh
 
 `This browser can no longer delete this pack.`
 
-This state is non-retriable. The dialog offers only a close action, and the card's Delete action disappears when ownership is reevaluated.
+This state is non-retriable. The dialog offers only a close action, and the card's Delete action remains suppressed for the rest of the mounted browser session.
 
 ### Local ownership removal failure
 

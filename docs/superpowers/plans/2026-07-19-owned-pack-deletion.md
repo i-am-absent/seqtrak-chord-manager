@@ -469,15 +469,13 @@ it("keeps a fixed target and safely retries a service failure", async () => {
 ```tsx
 it("turns lost ownership into a non-retriable safe error", async () => {
   const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
-  let owns = true;
   const repository = fakeRepository(
     vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
-    { ownsPack: vi.fn(() => owns) }
+    { ownsPack: vi.fn().mockReturnValue(true) }
   );
-  vi.mocked(repository.deletePack).mockImplementation(async () => {
-    owns = false;
-    throw new PackOwnershipError("token and hash details");
-  });
+  vi.mocked(repository.deletePack).mockRejectedValueOnce(
+    new PackOwnershipError("token and hash details")
+  );
   render(<SharedPackBrowser getRepository={() => repository}
     onLoadPack={vi.fn()} onDeletedPack={vi.fn()} />);
   await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
@@ -488,6 +486,7 @@ it("turns lost ownership into a non-retriable safe error", async () => {
   expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Delete pack" })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(repository.ownsPack(owned.id)).toBe(true);
   expect(screen.queryByRole("button", { name: "Delete Owned" })).not.toBeInTheDocument();
 });
 ```
@@ -685,6 +684,7 @@ const deleteTriggerRef = useRef<HTMLButtonElement>(null);
 const deleteInFlightRef = useRef(false);
 const deleteGenerationRef = useRef(0);
 const deletedIdsRef = useRef(new Set<string>());
+const ownershipDeniedIdsRef = useRef(new Set<string>());
 ```
 
 Filter every list result:
@@ -736,13 +736,16 @@ const handleConfirmDelete = useCallback(async () => {
       completeDelete(target, true);
       return;
     }
+    if (error instanceof PackOwnershipError) {
+      ownershipDeniedIdsRef.current.add(target.id);
+    }
     setDeleteSubmitting(false);
     setDeleteErrorState(deleteError(error));
   }
 }, [completeDelete, deleteTarget, getRepository]);
 ```
 
-On ordinary errors this preserves `deleteTarget`; an ownership error changes `deleteErrorState`, causing a rerender that reevaluates `ownsPack`.
+On ordinary errors this preserves `deleteTarget`. An ownership error also adds the fixed target ID to `ownershipDeniedIdsRef`, so the rerender and subsequent dialog close keep Delete hidden for the rest of the mounted browser session even if `ownsPack` still returns `true`.
 
 On component cleanup, increment both list and delete generations. Do not call `completeDelete` after unmount.
 
@@ -761,7 +764,8 @@ useEffect(() => {
 Render card action:
 
 ```tsx
-{getRepository().ownsPack(pack.id) ? (
+{getRepository().ownsPack(pack.id) &&
+ !ownershipDeniedIdsRef.current.has(pack.id) ? (
   <button
     className="shared-delete-action"
     type="button"
@@ -776,6 +780,8 @@ Render card action:
   </button>
 ) : null}
 ```
+
+After deletion, render `No shared packs yet.` only when `items.length === 0 && nextCursor === null`. Render append errors and `Load more` independently of whether the loaded item grid is empty. When deletion removes the last loaded card but `nextCursor` remains non-null, preserve the deletion notice and `Load more`; do not fetch automatically.
 
 Render the notice before the grid:
 

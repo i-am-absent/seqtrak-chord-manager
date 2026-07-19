@@ -93,6 +93,7 @@ export function SharedPackBrowser({
   const deleteInFlightRef = useRef(false);
   const deleteGenerationRef = useRef(0);
   const deletedIdsRef = useRef(new Set<string>());
+  const ownershipDeniedIdsRef = useRef(new Set<string>());
 
   const loadFirstPage = useCallback(async () => {
     const generation = ++generationRef.current;
@@ -191,6 +192,9 @@ export function SharedPackBrowser({
         completeDelete(target, true);
         return;
       }
+      if (error instanceof PackOwnershipError) {
+        ownershipDeniedIdsRef.current.add(target.id);
+      }
       setDeleteSubmitting(false);
       setDeleteErrorState(deleteError(error));
     }
@@ -239,77 +243,76 @@ export function SharedPackBrowser({
           {deleteNotice.message}
         </div>
       ) : null}
-      {replaceState === "ready" && items.length === 0 ? (
+      {replaceState === "ready" && items.length === 0 && !nextCursor ? (
         <p>No shared packs yet.</p>
       ) : null}
       {replaceState === "ready" && items.length > 0 ? (
-        <>
-          <div className="shared-pack-grid">
-            {items.map((pack) => (
-              <article className="shared-pack-card panel" key={pack.id}>
-                <h3>{pack.packName}</h3>
-                <p>{pack.authorName}</p>
-                <p>KEY {pack.key}</p>
-                <p>{pack.trackSoundName}</p>
-                <div className="shared-tag-row">
-                  {pack.tags.map((tag) => (
-                    <span className="shared-tag" key={tag}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <ol className="shared-chord-list">
-                  {pack.chords.map((chord) => (
-                    <li key={chord.slotIndex}>{chord.displayName}</li>
-                  ))}
-                </ol>
-                <time dateTime={pack.createdAt}>
-                  {new Date(pack.createdAt).toLocaleDateString()}
-                </time>
-                <button
-                  className="shared-load-action"
-                  type="button"
-                  aria-label={`Load ${pack.packName} into editor`}
-                  onClick={() => onLoadPack(pack)}
-                >
-                  Load into editor
-                </button>
-                {getRepository().ownsPack(pack.id) ? (
-                  <button
-                    className="shared-delete-action"
-                    type="button"
-                    aria-label={`Delete ${pack.packName}`}
-                    onClick={(event) => {
-                      deleteTriggerRef.current = event.currentTarget;
-                      setDeleteErrorState({ message: "", retryable: true });
-                      setDeleteTarget(pack);
-                    }}
-                  >
-                    Delete
-                  </button>
-                ) : null}
-              </article>
-            ))}
-          </div>
-          {appendState === "error" ? (
-            <div className="shared-append-error" role="alert">
-              <p>{appendError}</p>
-              <button type="button" onClick={() => void loadMore()}>
-                Try loading more
+        <div className="shared-pack-grid">
+          {items.map((pack) => (
+            <article className="shared-pack-card panel" key={pack.id}>
+              <h3>{pack.packName}</h3>
+              <p>{pack.authorName}</p>
+              <p>KEY {pack.key}</p>
+              <p>{pack.trackSoundName}</p>
+              <div className="shared-tag-row">
+                {pack.tags.map((tag) => (
+                  <span className="shared-tag" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <ol className="shared-chord-list">
+                {pack.chords.map((chord) => (
+                  <li key={chord.slotIndex}>{chord.displayName}</li>
+                ))}
+              </ol>
+              <time dateTime={pack.createdAt}>
+                {new Date(pack.createdAt).toLocaleDateString()}
+              </time>
+              <button
+                className="shared-load-action"
+                type="button"
+                aria-label={`Load ${pack.packName} into editor`}
+                onClick={() => onLoadPack(pack)}
+              >
+                Load into editor
               </button>
-            </div>
-          ) : null}
-          {nextCursor && appendState !== "error" ? (
-            <button
-              className="shared-load-more"
-              type="button"
-              disabled={appendState === "loading"}
-              onClick={() => void loadMore()}
-            >
-              {appendState === "loading" ? "Loading more…" : "Load more"}
-            </button>
-          ) : null}
-        </>
+              {getRepository().ownsPack(pack.id) &&
+              !ownershipDeniedIdsRef.current.has(pack.id) ? (
+                <button
+                  className="shared-delete-action"
+                  type="button"
+                  aria-label={`Delete ${pack.packName}`}
+                  onClick={(event) => {
+                    deleteTriggerRef.current = event.currentTarget;
+                    setDeleteErrorState({ message: "", retryable: true });
+                    setDeleteTarget(pack);
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {replaceState === "ready" && appendState === "error" ? (
+        <div className="shared-append-error" role="alert">
+          <p>{appendError}</p>
+          <button type="button" onClick={() => void loadMore()}>
+            Try loading more
+          </button>
+        </div>
+      ) : null}
+      {replaceState === "ready" && nextCursor && appendState !== "error" ? (
+        <button
+          className="shared-load-more"
+          type="button"
+          disabled={appendState === "loading"}
+          onClick={() => void loadMore()}
+        >
+          {appendState === "loading" ? "Loading more…" : "Load more"}
+        </button>
       ) : null}
       {deleteTarget ? (
         <DeleteSharedPackDialog
