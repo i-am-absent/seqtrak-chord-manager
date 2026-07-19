@@ -1,12 +1,59 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  PackOwnershipError,
+  PackOwnershipRemovalError,
+  SharingConfigurationError,
+  SharingResponseError,
+  SharingServiceError,
+  SharingValidationError,
+} from "../sharing/errors";
 import type { PackRepository } from "../sharing/packRepository";
 import type { PackCursor, PublicPack } from "../sharing/types";
+import { DeleteSharedPackDialog } from "./DeleteSharedPackDialog";
 
 const PAGE_SIZE = 20;
 
 export interface SharedPackBrowserProps {
   getRepository: () => PackRepository;
   onLoadPack: (pack: PublicPack) => void;
+  onDeletedPack: (pack: PublicPack) => void;
+}
+
+function deleteError(error: unknown): { message: string; retryable: boolean } {
+  if (error instanceof PackOwnershipError) {
+    return {
+      message: "This browser can no longer delete this pack.",
+      retryable: false,
+    };
+  }
+  if (error instanceof SharingConfigurationError) {
+    return {
+      message: "Shared pack deletion is not configured.",
+      retryable: false,
+    };
+  }
+  if (error instanceof SharingValidationError) {
+    return {
+      message: "The shared pack deletion request was rejected.",
+      retryable: false,
+    };
+  }
+  if (error instanceof SharingResponseError) {
+    return {
+      message: "The sharing service returned an invalid response. Please try again.",
+      retryable: true,
+    };
+  }
+  if (error instanceof SharingServiceError) {
+    return {
+      message: "Sharing is temporarily unavailable. Please try again.",
+      retryable: true,
+    };
+  }
+  return {
+    message: "Failed to delete shared pack. Please try again.",
+    retryable: true,
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -18,6 +65,7 @@ function errorMessage(error: unknown): string {
 export function SharedPackBrowser({
   getRepository,
   onLoadPack,
+  onDeletedPack,
 }: SharedPackBrowserProps) {
   const [items, setItems] = useState<PublicPack[]>([]);
   const [nextCursor, setNextCursor] = useState<PackCursor | null>(null);
@@ -29,8 +77,22 @@ export function SharedPackBrowser({
     "idle" | "loading" | "error"
   >("idle");
   const [appendError, setAppendError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<PublicPack | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteErrorState, setDeleteErrorState] = useState({
+    message: "",
+    retryable: true,
+  });
+  const [deleteNotice, setDeleteNotice] = useState<{
+    message: string;
+    warning: boolean;
+  } | null>(null);
   const generationRef = useRef(0);
   const appendInFlightRef = useRef(false);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const deleteInFlightRef = useRef(false);
+  const deleteGenerationRef = useRef(0);
+  const deletedIdsRef = useRef(new Set<string>());
 
   const loadFirstPage = useCallback(async () => {
     const generation = ++generationRef.current;
@@ -42,7 +104,10 @@ export function SharedPackBrowser({
     try {
       const page = await getRepository().listPacks({ limit: PAGE_SIZE });
       if (generation !== generationRef.current) return;
-      setItems(page.items);
+      const visibleItems = page.items.filter(
+        (pack) => !deletedIdsRef.current.has(pack.id),
+      );
+      setItems(visibleItems);
       setNextCursor(page.nextCursor);
       setReplaceState("ready");
     } catch (error) {
@@ -72,7 +137,10 @@ export function SharedPackBrowser({
       });
       if (generation !== generationRef.current) return;
       appendInFlightRef.current = false;
-      setItems((current) => [...current, ...page.items]);
+      const visibleItems = page.items.filter(
+        (pack) => !deletedIdsRef.current.has(pack.id),
+      );
+      setItems((current) => [...current, ...visibleItems]);
       setNextCursor(page.nextCursor);
       setAppendState("idle");
     } catch (error) {
@@ -83,10 +151,56 @@ export function SharedPackBrowser({
     }
   }, [appendState, getRepository, nextCursor, replaceState]);
 
+  const completeDelete = useCallback(
+    (target: PublicPack, warning: boolean) => {
+      deletedIdsRef.current.add(target.id);
+      setItems((current) => current.filter((pack) => pack.id !== target.id));
+      setDeleteSubmitting(false);
+      setDeleteTarget(null);
+      setDeleteErrorState({ message: "", retryable: true });
+      setDeleteNotice({
+        warning,
+        message: warning
+          ? `Deleted “${target.packName}”, but local ownership information could not be removed. The pack is no longer shared.`
+          : `Deleted “${target.packName}” from Shared Packs.`,
+      });
+      onDeletedPack(target);
+    },
+    [onDeletedPack],
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget || deleteInFlightRef.current) return;
+    const target = deleteTarget;
+    const generation = ++deleteGenerationRef.current;
+    deleteInFlightRef.current = true;
+    setDeleteSubmitting(true);
+    setDeleteErrorState({ message: "", retryable: true });
+    try {
+      await getRepository().deletePack(target.id);
+      if (generation !== deleteGenerationRef.current) return;
+      deleteInFlightRef.current = false;
+      completeDelete(target, false);
+    } catch (error) {
+      if (generation !== deleteGenerationRef.current) return;
+      deleteInFlightRef.current = false;
+      if (
+        error instanceof PackOwnershipRemovalError &&
+        error.packId === target.id
+      ) {
+        completeDelete(target, true);
+        return;
+      }
+      setDeleteSubmitting(false);
+      setDeleteErrorState(deleteError(error));
+    }
+  }, [completeDelete, deleteTarget, getRepository]);
+
   useEffect(() => {
     void loadFirstPage();
     return () => {
       generationRef.current += 1;
+      deleteGenerationRef.current += 1;
     };
   }, [loadFirstPage]);
 
@@ -111,6 +225,18 @@ export function SharedPackBrowser({
           <button type="button" onClick={() => void loadFirstPage()}>
             Try again
           </button>
+        </div>
+      ) : null}
+      {deleteNotice ? (
+        <div
+          className={
+            deleteNotice.warning
+              ? "shared-delete-notice warning"
+              : "shared-delete-notice"
+          }
+          role="status"
+        >
+          {deleteNotice.message}
         </div>
       ) : null}
       {replaceState === "ready" && items.length === 0 ? (
@@ -148,6 +274,20 @@ export function SharedPackBrowser({
                 >
                   Load into editor
                 </button>
+                {getRepository().ownsPack(pack.id) ? (
+                  <button
+                    className="shared-delete-action"
+                    type="button"
+                    aria-label={`Delete ${pack.packName}`}
+                    onClick={(event) => {
+                      deleteTriggerRef.current = event.currentTarget;
+                      setDeleteErrorState({ message: "", retryable: true });
+                      setDeleteTarget(pack);
+                    }}
+                  >
+                    Delete
+                  </button>
+                ) : null}
               </article>
             ))}
           </div>
@@ -170,6 +310,21 @@ export function SharedPackBrowser({
             </button>
           ) : null}
         </>
+      ) : null}
+      {deleteTarget ? (
+        <DeleteSharedPackDialog
+          target={deleteTarget}
+          submitting={deleteSubmitting}
+          error={deleteErrorState.message}
+          retryable={deleteErrorState.retryable}
+          trigger={deleteTriggerRef}
+          onCancel={() => {
+            if (deleteInFlightRef.current) return;
+            setDeleteErrorState({ message: "", retryable: true });
+            setDeleteTarget(null);
+          }}
+          onConfirm={() => void handleConfirmDelete()}
+        />
       ) : null}
     </section>
   );

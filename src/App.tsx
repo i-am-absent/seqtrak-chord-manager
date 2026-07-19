@@ -586,6 +586,7 @@ export default function App({
           <SharedPackBrowser
             getRepository={getPackRepository}
             onLoadPack={handleLoadSharedPack}
+            onDeletedPack={() => undefined}
           />
         </section>
       )}

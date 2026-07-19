@@ -3,6 +3,14 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultPack } from "../domain/music";
+import {
+  PackOwnershipError,
+  PackOwnershipRemovalError,
+  SharingConfigurationError,
+  SharingResponseError,
+  SharingServiceError,
+  SharingValidationError,
+} from "../sharing/errors";
 import type { PackRepository } from "../sharing/packRepository";
 import type { PackPage, PublicPack } from "../sharing/types";
 import { SharedPackBrowser } from "./SharedPackBrowser";
@@ -24,7 +32,10 @@ function publicPack(id: string, name = "Newest Pack"): PublicPack {
   };
 }
 
-function fakeRepository(listPacks: PackRepository["listPacks"]): PackRepository {
+function fakeRepository(
+  listPacks: PackRepository["listPacks"],
+  overrides: Partial<PackRepository> = {},
+): PackRepository {
   return {
     ownsPack: vi.fn().mockReturnValue(false),
     listPacks,
@@ -33,8 +44,251 @@ function fakeRepository(listPacks: PackRepository["listPacks"]): PackRepository 
     deletePack: vi.fn(),
     reportPack: vi.fn(),
     getPack: vi.fn(),
+    ...overrides,
   };
 }
+
+describe("SharedPackBrowser deletion", () => {
+  it("shows Delete only for owned packs and removes a confirmed deletion in place", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const other = publicPack("00000000-0000-4000-8000-000000000002", "Other");
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned, other], nextCursor: null }),
+    );
+    vi.mocked(repository.ownsPack).mockImplementation((id) => id === owned.id);
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    const onDeletedPack = vi.fn();
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={onDeletedPack}
+      />,
+    );
+    await screen.findByRole("heading", { name: "Owned" });
+    expect(screen.getByRole("button", { name: "Delete Owned" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Delete Other" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Owned" }));
+    expect(screen.getByRole("dialog", { name: "Delete shared pack?" })).toHaveTextContent("Owned");
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await waitFor(() => expect(repository.deletePack).toHaveBeenCalledWith(owned.id));
+    expect(screen.queryByRole("heading", { name: "Owned" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Other" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Deleted “Owned” from Shared Packs.");
+    expect(onDeletedPack).toHaveBeenCalledWith(owned);
+  });
+
+  it("keeps a fixed target and safely retries a service failure", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack)
+      .mockRejectedValueOnce(new SharingServiceError("SQL constraint ownership_token_hash"))
+      .mockResolvedValueOnce(undefined);
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sharing is temporarily unavailable. Please try again.",
+    );
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("constraint");
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await waitFor(() => expect(repository.deletePack).toHaveBeenCalledTimes(2));
+    expect(repository.deletePack).toHaveBeenNthCalledWith(1, owned.id);
+    expect(repository.deletePack).toHaveBeenNthCalledWith(2, owned.id);
+    expect(screen.queryByRole("heading", { name: "Owned" })).not.toBeInTheDocument();
+  });
+
+  it("turns lost ownership into a non-retriable safe error", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    let owns = true;
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn(() => owns) },
+    );
+    vi.mocked(repository.deletePack).mockImplementation(async () => {
+      owns = false;
+      throw new PackOwnershipError("token and hash details");
+    });
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This browser can no longer delete this pack.",
+    );
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Delete pack" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("button", { name: "Delete Owned" })).not.toBeInTheDocument();
+  });
+
+  it("treats ownership removal failure as non-retriable delete success", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const onDeletedPack = vi.fn();
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockRejectedValueOnce(new PackOwnershipRemovalError(owned.id));
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={onDeletedPack}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Deleted “Owned”, but local ownership information could not be removed. The pack is no longer shared.",
+    );
+    expect(screen.queryByRole("heading", { name: "Owned" })).not.toBeInTheDocument();
+    expect(onDeletedPack).toHaveBeenCalledOnce();
+    expect(repository.deletePack).toHaveBeenCalledOnce();
+    expect(screen.getByText("No shared packs yet.")).toBeInTheDocument();
+  });
+
+  it.each([
+    [new SharingConfigurationError("anon key secret"), "Shared pack deletion is not configured."],
+    [new SharingValidationError("SQL rejected ownership_token_hash"), "The shared pack deletion request was rejected."],
+    [new SharingResponseError("privileged metadata"), "The sharing service returned an invalid response. Please try again."],
+    [new SharingServiceError("constraint owner_hash_key"), "Sharing is temporarily unavailable. Please try again."],
+    [new Error("raw backend detail"), "Failed to delete shared pack. Please try again."],
+  ])("hides raw deletion details for %s", async (failure, safeMessage) => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockRejectedValueOnce(failure);
+    const view = render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(safeMessage);
+    expect(screen.getByRole("dialog")).not.toHaveTextContent(failure.message);
+    view.unmount();
+  });
+
+  it("guards duplicate deletion invocations in the same render", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const deletion = deferred<void>();
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockReturnValue(deletion.promise);
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    const confirm = screen.getByRole("button", { name: "Delete pack" });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+    expect(repository.deletePack).toHaveBeenCalledTimes(1);
+    await act(async () => deletion.resolve());
+  });
+
+  it("does not restore a deleted card from an older refresh response", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const refresh = deferred<PackPage>();
+    const repository = fakeRepository(
+      vi.fn<PackRepository["listPacks"]>()
+        .mockResolvedValueOnce({ items: [owned], nextCursor: null })
+        .mockReturnValueOnce(refresh.promise),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    act(() => screen.getByRole("button", { name: "Refresh" }).click());
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await waitFor(() => expect(repository.deletePack).toHaveBeenCalledOnce());
+    await act(async () => refresh.resolve({ items: [owned], nextCursor: null }));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Owned" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("filters a deleted ID from an overlapping append response", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const cursor = { createdAt: owned.createdAt, id: owned.id };
+    const append = deferred<PackPage>();
+    const repository = fakeRepository(
+      vi.fn<PackRepository["listPacks"]>()
+        .mockResolvedValueOnce({ items: [owned], nextCursor: cursor })
+        .mockReturnValueOnce(append.promise),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockResolvedValue(undefined);
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    act(() => screen.getByRole("button", { name: "Load more" }).click());
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await act(async () => append.resolve({ items: [owned], nextCursor: null }));
+    expect(screen.queryByRole("heading", { name: "Owned" })).not.toBeInTheDocument();
+  });
+
+  it("ignores deletion completion after unmount", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
+    const deletion = deferred<void>();
+    const onDeletedPack = vi.fn();
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      { ownsPack: vi.fn().mockReturnValue(true) },
+    );
+    vi.mocked(repository.deletePack).mockReturnValue(deletion.promise);
+    const view = render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={onDeletedPack}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    view.unmount();
+    await act(async () => deletion.resolve());
+    expect(onDeletedPack).not.toHaveBeenCalled();
+  });
+});
 
 describe("SharedPackBrowser initial list", () => {
   it("loads the newest 20 packs and renders card metadata", async () => {
@@ -48,6 +302,7 @@ describe("SharedPackBrowser initial list", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -81,6 +336,7 @@ describe("SharedPackBrowser initial list", () => {
       <SharedPackBrowser
         getRepository={() => repository}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
     expect(await screen.findByText("No shared packs yet.")).toBeInTheDocument();
@@ -98,6 +354,7 @@ describe("SharedPackBrowser initial list", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -116,6 +373,7 @@ describe("SharedPackBrowser initial list", () => {
           throw new Error("Supabase URL and anonymous key are required.");
         }}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -156,6 +414,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -191,6 +450,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -231,6 +491,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
     await screen.findByRole("heading", { name: "Old" });
@@ -257,6 +518,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -294,6 +556,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -341,6 +604,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -397,6 +661,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
@@ -438,6 +703,7 @@ describe("SharedPackBrowser pagination and refresh", () => {
       <SharedPackBrowser
         getRepository={() => fakeRepository(listPacks)}
         onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
       />,
     );
 
