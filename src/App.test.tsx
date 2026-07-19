@@ -142,8 +142,14 @@ describe("App", () => {
     previewMocks.playNote.mockClear();
     midiMocks.createMidiAccessService.mockReturnValue({ requestAccess: midiMocks.requestAccess });
     midiMocks.requestAccess.mockResolvedValue({
-      inputs: [{ id: "input-1", name: "SEQTRAK Input" }],
-      outputs: [{ id: "output-1", name: "SEQTRAK Output", send: vi.fn() }],
+      inputs: [
+        { id: "input-1", name: "SEQTRAK Input" },
+        { id: "input-2", name: "Alternate Input" }
+      ],
+      outputs: [
+        { id: "output-1", name: "SEQTRAK Output", send: vi.fn() },
+        { id: "output-2", name: "Alternate Output", send: vi.fn() }
+      ],
       subscribeStateChange: vi.fn((callback) => {
         midiMocks.stateCallback = callback;
         return midiMocks.stateUnsubscribe;
@@ -932,28 +938,66 @@ describe("App", () => {
     expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
   });
 
-  it("enables Reset only after a resettable Editor value changes and cancel preserves it", async () => {
-    renderApp(<App />);
+  it("enables Reset after editor state changes and cancel preserves pack, slot, SCALE, and publication notice", async () => {
+    const repository = sharingRepository(sharedPack());
+    vi.mocked(repository.createPack).mockImplementation(async (pack) => createdPublicPack(pack));
+    renderApp(<App packRepository={repository} />);
     const reset = screen.getByRole("button", { name: "Reset" });
     expect(reset).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText("Pack name"));
-    await userEvent.type(screen.getByLabelText("Pack name"), "Changed");
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish shared pack" }));
+    await screen.findByText("Published “Imported SYNTH1 Scale 2” to Shared Packs.");
     expect(reset).toBeEnabled();
     await userEvent.click(reset);
     expect(screen.getByRole("dialog", { name: "Reset editor?" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByDisplayValue("Changed")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Imported SYNTH1 Scale 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toHaveClass("selected");
+    expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument();
+    expect(screen.getByText(
+      "Published “Imported SYNTH1 Scale 2” to Shared Packs."
+    )).toBeInTheDocument();
     expect(reset).toHaveFocus();
   });
 
-  it("also enables Reset for a non-default slot or known SCALE", async () => {
+  it("enables Reset for a non-default slot", async () => {
     renderApp(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
     expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
   });
 
+  it("enables Reset when only SCALE is known", async () => {
+    midiMocks.readPackFromSeqtrak.mockResolvedValueOnce({
+      scale: 2,
+      pack: createDefaultPack()
+    });
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Read from SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
+    expect(screen.getByDisplayValue("Untitled Pack")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 1 C" })).toHaveClass("selected");
+    expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+  });
+
+  it("does not render Reset in Shared Packs", async () => {
+    renderApp(<App packRepository={sharingRepository(sharedPack())} />);
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    expect(screen.queryByRole("button", { name: "Reset" })).not.toBeInTheDocument();
+  });
+
   it("resets pack, slot, and SCALE while preserving MIDI, ports, track, and live KEY", async () => {
     renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText("Input Port"), "input-2");
+    await userEvent.selectOptions(screen.getByLabelText("Output Port"), "output-2");
     await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
     await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText("Target track"), "8");
@@ -961,6 +1005,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("Current SCALE: 2")).toBeInTheDocument());
     act(() => midiMocks.keyCallback?.(3));
     await userEvent.click(screen.getByRole("button", { name: "Slot 2 Dm" }));
+    const disposeCallsBeforeReset = midiMocks.mockClient.dispose.mock.calls.length;
 
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await userEvent.click(screen.getByRole("button", { name: "Reset editor" }));
@@ -969,12 +1014,12 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Slot 1 C" })).toHaveClass("selected");
     expect(screen.getByText("Current SCALE: unknown")).toBeInTheDocument();
     expect(screen.getByText("Status: connected")).toBeInTheDocument();
-    expect(screen.getByLabelText("Input Port")).toHaveValue("input-1");
-    expect(screen.getByLabelText("Output Port")).toHaveValue("output-1");
+    expect(screen.getByLabelText("Input Port")).toHaveValue("input-2");
+    expect(screen.getByLabelText("Output Port")).toHaveValue("output-2");
     expect(screen.getByLabelText("Target track")).toHaveValue("8");
     expect(screen.getByRole("button", { name: "D#4" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Editor reset to the default pack.")).toBeInTheDocument();
-    expect(midiMocks.mockClient.dispose).not.toHaveBeenCalled();
+    expect(midiMocks.mockClient.dispose).toHaveBeenCalledTimes(disposeCallsBeforeReset);
     expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
   });
 
