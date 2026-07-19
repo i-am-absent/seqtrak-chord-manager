@@ -247,9 +247,7 @@ button.slot-card:hover {
 }
 
 .keyboard {
-  display: grid;
-  grid-auto-columns: 18px;
-  grid-auto-flow: column;
+  display: flex;
   height: 140px;
   min-width: max-content;
 }
@@ -258,6 +256,7 @@ button.slot-card:hover {
   border: 1px solid #aeb7c5;
   border-radius: 0 0 4px 4px;
   cursor: pointer;
+  flex: 0 0 auto;
   padding: 0;
   position: relative;
 }
@@ -267,6 +266,10 @@ button.slot-card:hover {
   height: 140px;
   width: 18px;
   z-index: 1;
+}
+
+.piano-key.white.wide-white-key {
+  width: 36px;
 }
 
 .piano-key.black {
