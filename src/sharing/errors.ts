@@ -15,6 +15,18 @@ export class PackOwnershipPersistenceError extends Error {
     });
   }
 }
+export class PackOwnershipRemovalError extends Error {
+  readonly packId: string;
+
+  constructor(packId: string) {
+    super("The pack was deleted, but browser ownership could not be removed.");
+    this.name = "PackOwnershipRemovalError";
+    this.packId = packId;
+    Object.defineProperty(this, "cause", {
+      value: new Error("Browser storage rejected ownership removal.")
+    });
+  }
+}
 export class SharedPackNotFoundError extends Error {}
 export class SharingServiceError extends Error {}
 export class SharingResponseError extends Error {}

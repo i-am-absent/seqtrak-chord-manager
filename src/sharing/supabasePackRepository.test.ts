@@ -3,6 +3,7 @@ import { createDefaultPack } from "../domain/music";
 import {
   PackOwnershipError,
   PackOwnershipPersistenceError,
+  PackOwnershipRemovalError,
   SharedPackNotFoundError,
   SharingConfigurationError,
   SharingResponseError,
@@ -72,6 +73,15 @@ function setup() {
 }
 
 describe("SupabasePackRepository lifecycle", () => {
+  it("reports ownership presence without exposing its token and contains storage reads", () => {
+    const { ownership, repository } = setup();
+    ownership.save(publicPack.id, TOKEN);
+    expect(repository.ownsPack(publicPack.id)).toBe(true);
+    expect(repository.ownsPack("00000000-0000-4000-8000-000000000099")).toBe(false);
+    vi.spyOn(ownership, "get").mockImplementation(() => { throw new Error(`storage ${TOKEN}`); });
+    expect(repository.ownsPack(publicPack.id)).toBe(false);
+  });
+
   it("generates one token and saves ownership only after a valid create response", async () => {
     const { client, ownership, repository, generated } = setup();
     client.responses.push({ data: publicPack, error: null });
@@ -169,6 +179,20 @@ describe("SupabasePackRepository lifecycle", () => {
     expect(client.calls).toEqual([]);
   });
 
+  it("normalizes ownership storage read failures before RPC", async () => {
+    const { client, ownership, repository } = setup();
+    const storageFailure = new Error(`storage ${TOKEN}`);
+    vi.spyOn(ownership, "get").mockImplementation(() => { throw storageFailure; });
+
+    const error = await repository.deletePack(publicPack.id).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(PackOwnershipError);
+    expect(error).not.toBe(storageFailure);
+    expect(error).toMatchObject({ message: "This browser does not own the shared pack." });
+    expect(JSON.stringify(error)).not.toContain(TOKEN);
+    expect(client.calls).toEqual([]);
+  });
+
   it("removes ownership only after delete succeeds", async () => {
     const { client, ownership, repository } = setup();
     ownership.save(publicPack.id, TOKEN);
@@ -180,6 +204,26 @@ describe("SupabasePackRepository lifecycle", () => {
     client.responses.push({ data: null, error: null });
     await expect(repository.deletePack(publicPack.id)).resolves.toBeUndefined();
     expect(ownership.get(publicPack.id)).toBeNull();
+  });
+
+  it("reports ownership removal failure as token-free delete partial success", async () => {
+    const { client, ownership, repository } = setup();
+    ownership.save(publicPack.id, TOKEN);
+    const storageFailure = new Error(`localStorage rejected ${TOKEN}`);
+    vi.spyOn(ownership, "remove").mockImplementation(() => { throw storageFailure; });
+    client.responses.push({ data: null, error: null });
+
+    const error = await repository.deletePack(publicPack.id).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(PackOwnershipRemovalError);
+    expect(error).not.toBe(storageFailure);
+    expect(error).toMatchObject({
+      packId: publicPack.id,
+      message: "The pack was deleted, but browser ownership could not be removed."
+    });
+    expect((error as Error & { cause?: Error }).cause?.message)
+      .toBe("Browser storage rejected ownership removal.");
+    expect(JSON.stringify(error)).not.toContain(TOKEN);
+    expect(client.calls).toHaveLength(1);
   });
 
   it("reports without reading or sending ownership", async () => {

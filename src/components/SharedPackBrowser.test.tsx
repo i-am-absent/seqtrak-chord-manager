@@ -26,6 +26,7 @@ function publicPack(id: string, name = "Newest Pack"): PublicPack {
 
 function fakeRepository(listPacks: PackRepository["listPacks"]): PackRepository {
   return {
+    ownsPack: vi.fn().mockReturnValue(false),
     listPacks,
     createPack: vi.fn(),
     updatePack: vi.fn(),

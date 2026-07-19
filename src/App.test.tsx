@@ -52,6 +52,7 @@ function createdPublicPack(editable: EditablePack): PublicPack {
 
 function sharingRepository(pack: PublicPack): PackRepository {
   return {
+    ownsPack: vi.fn().mockReturnValue(false),
     listPacks: vi.fn().mockResolvedValue({ items: [pack], nextCursor: null }),
     createPack: vi.fn(),
     updatePack: vi.fn(),

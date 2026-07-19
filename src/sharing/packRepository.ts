@@ -1,6 +1,7 @@
 import type { EditablePack, ListPackOptions, PackPage, PublicPack } from "./types";
 
 export interface PackRepository {
+  ownsPack(packId: string): boolean;
   createPack(pack: EditablePack): Promise<PublicPack>;
   updatePack(pack: PublicPack): Promise<PublicPack>;
   deletePack(packId: string): Promise<void>;

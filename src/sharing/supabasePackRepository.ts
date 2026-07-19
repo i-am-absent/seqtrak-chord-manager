@@ -3,6 +3,7 @@ import { chromaticKeys, validatePack, type ChordPack, type ChordSlot } from "../
 import {
   PackOwnershipError,
   PackOwnershipPersistenceError,
+  PackOwnershipRemovalError,
   SharedPackNotFoundError,
   SharingConfigurationError,
   SharingResponseError,
@@ -265,6 +266,14 @@ export class SupabasePackRepository implements PackRepository {
     return created;
   }
 
+  ownsPack(packId: string): boolean {
+    try {
+      return this.ownership.get(packId) !== null;
+    } catch {
+      return false;
+    }
+  }
+
   async updatePack(pack: PublicPack): Promise<PublicPack> {
     const token = this.requireOwnership(pack.id);
     const data = await this.call("update_pack", {
@@ -282,7 +291,11 @@ export class SupabasePackRepository implements PackRepository {
       ownership_token: token
     }, [token]);
     if (data !== null) throw new SharingResponseError("The sharing service returned an invalid delete response.");
-    this.ownership.remove(packId);
+    try {
+      this.ownership.remove(packId);
+    } catch {
+      throw new PackOwnershipRemovalError(packId);
+    }
   }
 
   async reportPack(packId: string): Promise<void> {
@@ -305,7 +318,12 @@ export class SupabasePackRepository implements PackRepository {
   }
 
   private requireOwnership(packId: string): string {
-    const token = this.ownership.get(packId);
+    let token: string | null;
+    try {
+      token = this.ownership.get(packId);
+    } catch {
+      throw new PackOwnershipError("This browser does not own the shared pack.");
+    }
     if (!token) throw new PackOwnershipError("This browser does not own the shared pack.");
     return token;
   }
