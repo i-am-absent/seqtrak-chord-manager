@@ -4,7 +4,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { createDefaultPack } from "./domain/music";
+import { createDefaultPack, midiNoteName } from "./domain/music";
 import * as editablePack from "./sharing/editablePack";
 import {
   PackOwnershipPersistenceError,
@@ -169,28 +169,124 @@ describe("App", () => {
     midiMocks.writePackToSeqtrak.mockResolvedValue({ verified: true });
   });
 
-  it("follows live KEY changes while preserving relative notes and previews absolute notes", async () => {
+  it("previews from Slot 2 without mutation and explicitly applies only to target Slot 6", async () => {
+    renderApp(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Slot 6 Am" }));
+    previewMocks.playChord.mockClear();
+    await userEvent.click(screen.getByRole("tab", { name: "Slot 2 — Dm" }));
+
+    const recommendation = screen.getAllByRole("button", { name: /recommendation:/i })[0];
+    const chordName = recommendation.querySelector("strong")?.textContent ?? "";
+    await userEvent.click(recommendation);
+
+    expect(chordName).not.toBe("");
+    expect(previewMocks.playChord).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 6 Am" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /preview variation 1/i }));
+
+    const previewNotes = previewMocks.playChord.mock.calls[0][0];
+    expect(previewNotes.length).toBeGreaterThan(0);
+    for (const note of previewNotes) {
+      expect(screen.getByRole("button", { name: midiNoteName(note) })).toHaveAttribute(
+        "data-candidate",
+        "true"
+      );
+    }
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Slot 6 Am" })).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: `Apply ${chordName} to Slot 6` })
+    );
+
+    expect(screen.getByRole("button", { name: "Slot 2 Dm" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Slot 6 Am" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: (name) => name.startsWith(`Slot 6 ${chordName}`)
+      })
+    ).toHaveTextContent(previewNotes.map(midiNoteName).join(" "));
+    expect(document.querySelectorAll('[data-candidate="true"]')).toHaveLength(0);
+  });
+
+  it("stores an applied KEY 11 voicing as relative notes", async () => {
+    midiMocks.mockClient.readCurrentKey.mockImplementation(async () => {
+      midiMocks.keyCallback?.(11);
+      return 11;
+    });
     renderApp(<App />);
     await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
-    await waitFor(() => expect(midiMocks.mockClient.readCurrentKey).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Slot 6 Am" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Slot 2 — Dm" }));
+    previewMocks.playChord.mockClear();
 
-    expect(screen.getByRole("button", { name: "C#4" })).toHaveAttribute("aria-pressed", "true");
-    act(() => midiMocks.keyCallback?.(2));
-    await waitFor(() => expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true"));
-    expect(screen.getByText("D4 F#4 A4")).toBeInTheDocument();
+    const recommendation = screen.getAllByRole("button", { name: /recommendation:/i })[0];
+    const chordName = recommendation.querySelector("strong")?.textContent ?? "";
+    await userEvent.click(recommendation);
+    await userEvent.click(screen.getByRole("button", { name: /preview variation 1/i }));
+    const absoluteNotes = previewMocks.playChord.mock.calls[0][0];
+    await userEvent.click(
+      screen.getByRole("button", { name: `Apply ${chordName} to Slot 6` })
+    );
+
+    const appliedSlot = screen.getByRole("button", {
+      name: (name) => name.startsWith(`Slot 6 ${chordName}`)
+    });
+    expect(appliedSlot).toHaveTextContent(absoluteNotes.map(midiNoteName).join(" "));
+
     act(() => midiMocks.keyCallback?.(0));
-    expect(screen.getByText("C4 E4 G4")).toBeInTheDocument();
-    act(() => midiMocks.keyCallback?.(2));
-    await userEvent.click(screen.getByRole("button", { name: "D4" }));
-    expect(previewMocks.playNote).toHaveBeenCalledWith(62);
-    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() =>
+      expect(appliedSlot).toHaveTextContent(
+        absoluteNotes.map((note: number) => midiNoteName(note - 11)).join(" ")
+      )
+    );
+  });
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Apply variation/ })[0]);
-    expect(previewMocks.playChord).toHaveBeenCalledWith([62, 65, 69, 72]);
-    expect(screen.getByRole("button", { name: "D4" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "F4" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "A4" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "C5" })).toHaveAttribute("aria-pressed", "true");
+  it("preserves a preview across target-only changes and clears it on live KEY changes", async () => {
+    renderApp(<App />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect SEQTRAK" }));
+    await waitFor(() => expect(screen.getByText("Status: connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("tab", { name: "Slot 2 — Dm" }));
+    const recommendation = screen.getAllByRole("button", { name: /recommendation:/i })[0];
+    const chordName = recommendation.querySelector("strong")?.textContent ?? "";
+    await userEvent.click(recommendation);
+    await userEvent.click(screen.getByRole("button", { name: /preview variation 1/i }));
+    const previewNotes = previewMocks.playChord.mock.calls.at(-1)?.[0] ?? [];
+
+    await userEvent.click(screen.getByRole("button", { name: "Slot 7 Bdim" }));
+
+    expect(screen.getByRole("button", { name: `Apply ${chordName} to Slot 7` })).toBeEnabled();
+    for (const note of previewNotes) {
+      expect(screen.getByRole("button", { name: midiNoteName(note) })).toHaveAttribute(
+        "data-candidate",
+        "true"
+      );
+    }
+
+    act(() => midiMocks.keyCallback?.(2));
+    await waitFor(() =>
+      expect(screen.getByText("Select a recommendation")).toBeInTheDocument()
+    );
+    expect(document.querySelectorAll('[data-candidate="true"]')).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /apply .* to slot 7/i })).not.toBeInTheDocument();
+  });
+
+  it("clears keyboard candidate notes when leaving and returning to the editor", async () => {
+    renderApp(<App packRepository={sharingRepository(sharedPack())} />);
+    const recommendation = screen.getAllByRole("button", { name: /recommendation:/i })[0];
+    await userEvent.click(recommendation);
+    await userEvent.click(screen.getByRole("button", { name: /preview variation 1/i }));
+    expect(document.querySelectorAll('[data-candidate="true"]')).not.toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shared Packs" }));
+    await userEvent.click(screen.getByRole("button", { name: "Editor" }));
+
+    expect(document.querySelectorAll('[data-candidate="true"]')).toHaveLength(0);
+    expect(screen.getByText("Select a recommendation")).toBeInTheDocument();
   });
 
   it("previews a stored relative chord at the live KEY", async () => {

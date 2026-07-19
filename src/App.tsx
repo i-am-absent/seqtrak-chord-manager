@@ -5,8 +5,8 @@ import { DevicePanel, type DeviceStatus } from "./components/DevicePanel";
 import { Keyboard88 } from "./components/Keyboard88";
 import { MetadataPanel } from "./components/MetadataPanel";
 import { PublishPackDialog } from "./components/PublishPackDialog";
-import { RecommendationPanel } from "./components/RecommendationPanel";
 import { ResetEditorDialog } from "./components/ResetEditorDialog";
+import { SevenSlotRecommendationPanel } from "./components/SevenSlotRecommendationPanel";
 import { SharedPackBrowser } from "./components/SharedPackBrowser";
 import { createEditorState, editorReducer } from "./domain/packEditor";
 import {
@@ -91,6 +91,7 @@ export default function App({
   const [selectedTrackIndex, setSelectedTrackIndex] = useState<SeqtrakTrackIndex>(7);
   const [currentScale, setCurrentScale] = useState<number | null>(null);
   const [seqtrakKeyOffset, setSeqtrakKeyOffset] = useState(0);
+  const [recommendationCandidateNotes, setRecommendationCandidateNotes] = useState<number[]>([]);
   const repositoryRef = useRef<{
     source: PackRepository | (() => PackRepository);
     repository: PackRepository;
@@ -562,6 +563,7 @@ export default function App({
 
         <Keyboard88
           activeNotes={selectedChord.notes}
+          candidateNotes={recommendationCandidateNotes}
           keyOffset={seqtrakKeyOffset}
           onPreviewNote={(note) => {
             void getPreviewEngine().playNote(note);
@@ -571,12 +573,15 @@ export default function App({
           }
         />
 
-        <RecommendationPanel
+        <SevenSlotRecommendationPanel
+          chords={state.pack.chords}
           packKey={state.pack.key}
-          currentChordName={selectedChord.displayName}
+          keyOffset={seqtrakKeyOffset}
+          targetSlotIndex={state.selectedSlotIndex}
           onPreview={(notes) => {
             void getPreviewEngine().playChord(notes);
           }}
+          onCandidateNotesChange={setRecommendationCandidateNotes}
           onApply={(variation, chordName) =>
             dispatch({
               type: "replaceSelectedChordFromAbsolute",
