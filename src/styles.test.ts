@@ -10,7 +10,8 @@ describe("keyboard layout styles", () => {
     expect(styles).not.toMatch(/\.keyboard\s*\{[^}]*display:\s*grid;/s);
     expect(styles).toMatch(/\.piano-key\s*\{[^}]*flex:\s*0 0 auto;/s);
     expect(styles).toMatch(/\.piano-key\.white\s*\{[^}]*width:\s*18px;/s);
-    expect(styles).toMatch(/\.piano-key\.white\.wide-white-key\s*\{[^}]*width:\s*36px;/s);
+    expect(styles).toMatch(/\.piano-key\.white\.wide-white-key\s*\{[^}]*width:\s*18px;/s);
+    expect(styles).not.toMatch(/\.piano-key\.white\.wide-white-key\s*\{[^}]*width:\s*36px;/s);
     expect(styles).toMatch(
       /\.piano-key\.black\s*\{[^}]*margin-left:\s*-7px;[^}]*margin-right:\s*-7px;[^}]*width:\s*14px;/s
     );
