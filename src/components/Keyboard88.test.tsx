@@ -60,4 +60,23 @@ describe("Keyboard88", () => {
     expect(screen.getByRole("button", { name: "B7" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "C8" })).toBeDisabled();
   });
+
+  it("marks only D, G, and A white keys from B0 onward for widening", () => {
+    renderApp(
+      <Keyboard88
+        activeNotes={[]}
+        keyOffset={0}
+        onToggleNote={vi.fn()}
+        onPreviewNote={vi.fn()}
+      />
+    );
+
+    for (const noteName of ["D1", "G1", "A1", "D4", "G7", "A7"]) {
+      expect(screen.getByRole("button", { name: noteName })).toHaveClass("wide-white-key");
+    }
+
+    for (const noteName of ["A0", "B0", "C1", "C#1", "E1", "F1", "B1", "C8"]) {
+      expect(screen.getByRole("button", { name: noteName })).not.toHaveClass("wide-white-key");
+    }
+  });
 });

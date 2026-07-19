@@ -7,6 +7,13 @@ import {
   relativeToAbsoluteNote
 } from "../domain/music";
 
+const FIRST_ADJUSTED_MIDI_NOTE = 23; // B0
+const wideWhitePitchClasses = new Set([2, 7, 9]); // D, G, A
+
+function isWideWhiteKey(note: number): boolean {
+  return note >= FIRST_ADJUSTED_MIDI_NOTE && wideWhitePitchClasses.has(note % 12);
+}
+
 interface Keyboard88Props {
   activeNotes: number[];
   candidateNotes?: number[];
@@ -47,6 +54,7 @@ export function Keyboard88({
               className={[
                 "piano-key",
                 isBlackKey(note) ? "black" : "white",
+                isWideWhiteKey(note) ? "wide-white-key" : "",
                 selected ? "active" : "",
                 candidate ? "candidate" : ""
               ].join(" ")}
