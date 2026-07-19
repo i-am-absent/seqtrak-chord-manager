@@ -55,3 +55,13 @@
 3. Select `Default App Loopback (B)` for output, click `Connect SEQTRAK`, and verify that the expected timeout names both chosen ports.
 4. Restore `SEQTRAK-1` for both directions, reconnect, and verify that KEY and `Read from SEQTRAK` work.
 5. Disconnect the selected input, reconnect it, and verify that only the missing direction is cleared and reselected.
+
+## Seven-slot chord recommendations
+
+1. Inspect all seven source tabs. Change the selected Chord Grid slot and verify that the active recommendation source does not change, while the displayed Apply target follows the selected grid slot.
+2. For several source chords, verify that six candidates are shown initially and `More recommendations` expands the list to twelve. Confirm the initial six and full twelve remain evenly split between conventional and chromatic reasons.
+3. Select a tension chord such as a 9th, 11th, 13th, or altered dominant, preview a voicing variation, and verify that its sound matches the orange candidate notes on the keyboard.
+4. After previewing a variation, select a different Chord Grid target. Verify that the preview selection remains and Apply writes the displayed chord name and exact previewed notes only to the new target.
+5. Repeat source resolution, preview, keyboard highlight, and Apply checks with the live SEQTRAK KEY set to `0`, `1`, and `11`.
+6. At a viewport no wider than 640 px, verify that all seven source tabs can be reached by horizontal scrolling and that More, Apply, and variation actions use the available full width.
+7. Disable or block Web Audio, then select a recommendation and variation. Verify that preview fails silently without a crash and Apply remains enabled and usable.

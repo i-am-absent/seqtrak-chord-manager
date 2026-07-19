@@ -16,3 +16,16 @@ describe("keyboard layout styles", () => {
     );
   });
 });
+
+describe("seven-slot recommendation styles", () => {
+  it("keeps tabs scrollable and candidates responsive without suppressing focus", () => {
+    expect(styles).toMatch(/\.recommendation-tabs\s*\{[^}]*overflow-x:\s*auto;/s);
+    expect(styles).toMatch(/\.recommendation-tab\[aria-selected="true"\]\s*\{/s);
+    expect(styles).toMatch(/\.recommendation-candidates\s*\{[^}]*display:\s*grid;/s);
+    expect(styles).toMatch(
+      /\.recommendation-candidates\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(10rem,\s*1fr\)\);/s,
+    );
+    expect(styles).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.recommendation-apply/s);
+    expect(styles).not.toMatch(/\.recommendation[^}]*outline:\s*none/s);
+  });
+});

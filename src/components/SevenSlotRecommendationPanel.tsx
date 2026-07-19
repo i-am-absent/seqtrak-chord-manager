@@ -123,7 +123,10 @@ export function SevenSlotRecommendationPanel({
   }
 
   return (
-    <section className="panel seven-slot-recommendation-panel" aria-label="Recommendations">
+    <section
+      className="panel seven-slot-recommendation-panel recommendation-panel"
+      aria-label="Recommendations"
+    >
       <div className="recommendation-header">
         <label>
           Recommendation key
@@ -161,6 +164,7 @@ export function SevenSlotRecommendationPanel({
       <div className="recommendation-tabs" role="tablist" aria-label="Recommendation sources">
         {chords.map((chord) => (
           <button
+            className="recommendation-tab"
             key={chord.slotIndex}
             id={`recommendation-tab-${chord.slotIndex}`}
             role="tab"
@@ -189,7 +193,10 @@ export function SevenSlotRecommendationPanel({
 
         {recommendationSet.source ? (
           <>
-            <div className="chip-row" aria-label="Recommended chord names">
+            <div
+              className="chip-row recommendation-candidates"
+              aria-label="Recommended chord names"
+            >
               {recommendationSet.candidates.slice(0, expanded ? 12 : 6).map((recommendation) => (
                 <button
                   className={
@@ -205,7 +212,11 @@ export function SevenSlotRecommendationPanel({
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => setExpanded((current) => !current)}>
+            <button
+              className="recommendation-more"
+              type="button"
+              onClick={() => setExpanded((current) => !current)}
+            >
               {expanded ? "Fewer recommendations" : "More recommendations"}
             </button>
           </>
@@ -215,7 +226,11 @@ export function SevenSlotRecommendationPanel({
       </div>
 
       <div className="recommendation-detail" aria-live="polite">
-        {target && <p>{`Target: Slot ${target.slotIndex} — ${target.displayName}`}</p>}
+        {target && (
+          <p className="recommendation-target">
+            {`Target: Slot ${target.slotIndex} — ${target.displayName}`}
+          </p>
+        )}
         {selectedRecommendation ? (
           <>
             <div className="variation-row" aria-label="Voicing variations">
@@ -233,6 +248,7 @@ export function SevenSlotRecommendationPanel({
               ))}
             </div>
             <button
+              className="recommendation-apply"
               type="button"
               disabled={!selectedVariation}
               onClick={applySelection}

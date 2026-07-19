@@ -44,6 +44,21 @@ async function selectFirstVariation() {
 }
 
 describe("SevenSlotRecommendationPanel", () => {
+  it("exposes scoped styling hooks for the responsive workflow", () => {
+    renderApp(panel());
+
+    expect(screen.getByRole("region", { name: "Recommendations" })).toHaveClass(
+      "recommendation-panel",
+    );
+    expect(screen.getAllByRole("tab")[0]).toHaveClass("recommendation-tab");
+    expect(screen.getByLabelText("Recommended chord names")).toHaveClass(
+      "recommendation-candidates",
+    );
+    expect(screen.getByRole("button", { name: "More recommendations" })).toHaveClass(
+      "recommendation-more",
+    );
+  });
+
   it("shows seven accessible source tabs and expands six recommendations to twelve", async () => {
     renderApp(panel());
 
