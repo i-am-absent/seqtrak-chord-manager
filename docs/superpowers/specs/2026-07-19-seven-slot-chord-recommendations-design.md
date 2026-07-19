@@ -228,6 +228,8 @@ The recommendation/variation/candidate selection and `More` expansion clear when
 - the active source slot's chord name or notes change;
 - Recommendation key changes;
 - Recommendation mode changes;
+- the live SEQTRAK KEY offset changes;
+- the Recommendation panel unmounts or the editor view is left;
 - Apply completes.
 
 Changes to a non-active source slot do not disturb the active selection. A target-slot-only change updates the Apply destination without clearing the preview selection.
@@ -292,6 +294,8 @@ The panel receives all seven chord slots, live KEY offset, Pack Key, and current
 - Apply is disabled before variation selection and targets the current selected slot afterward;
 - target-only changes preserve the selected source/variation;
 - tab, active-source, key, mode, and Apply transitions clear the specified state;
+- live SEQTRAK KEY changes clear stale variation and candidate-note state;
+- leaving the editor clears App-level candidate notes before a later return;
 - inferred source labels appear only for fallback analysis;
 - narrow layout keeps tabs operable through horizontal scrolling CSS contracts.
 
