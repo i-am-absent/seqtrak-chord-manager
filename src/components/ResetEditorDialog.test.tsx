@@ -26,6 +26,10 @@ function setup() {
 it("opens a labelled modal, explains preserved device state, and focuses the heading", () => {
   setup();
   expect(screen.getByRole("dialog", { name: "Reset editor?" })).toHaveAttribute("open");
+  expect(screen.getByRole("dialog")).toHaveClass("reset-dialog");
+  expect(screen.getByRole("heading", { name: "Reset editor?" }).parentElement)
+    .toHaveClass("reset-dialog-card");
+  expect(screen.getByRole("button", { name: "Reset editor" })).toHaveClass("danger-action");
   expect(screen.getByRole("heading", { name: "Reset editor?" })).toHaveFocus();
   expect(screen.getByText(
     "This replaces the current pack with the default pack and clears SCALE. Your MIDI connection and SEQTRAK KEY will be preserved."
