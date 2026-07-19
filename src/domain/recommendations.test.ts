@@ -57,6 +57,47 @@ describe("recommendations", () => {
     expect(getChordRecommendations(recommendationInput).candidates.map((item) => item.name)).toEqual(major);
   });
 
+  it("keeps contextual rule priority ahead of destination function and voice leading", () => {
+    const chromaticRuleIds = getChordRecommendations({
+      ...recommendationInput,
+      sourceDisplayName: "Db7"
+    }).candidates
+      .filter((item) => item.category === "chromatic")
+      .map((item) => item.ruleId);
+
+    expect(chromaticRuleIds.indexOf("secondary-dominant")).toBeLessThan(
+      chromaticRuleIds.indexOf("altered-dominant")
+    );
+  });
+
+  it("uses dominant qualities for every dominant-producing rule family", () => {
+    const dominantRuleIds = new Set([
+      "circle-fifths", "predominant-dominant", "secondary-dominant",
+      "tritone-substitution", "backdoor", "altered-dominant"
+    ]);
+    const fixtures = ["Cmaj7", "Dm7", "G7", "Db7", "F#dim7"];
+    const dominantCandidates = fixtures.flatMap((sourceDisplayName) =>
+      getChordRecommendations({ ...recommendationInput, sourceDisplayName }).candidates
+    ).filter((item) => dominantRuleIds.has(item.ruleId));
+
+    expect(new Set(dominantCandidates.map((item) => item.ruleId))).toEqual(dominantRuleIds);
+    expect(dominantCandidates.every((item) =>
+      ["7", "9", "13", "7b9", "7#9", "7#11", "7b13"].includes(item.chord.quality)
+    )).toBe(true);
+  });
+
+  it("uses the selected mode's scale quality for functional destinations", () => {
+    const majorFunctional = getChordRecommendations(recommendationInput).candidates
+      .find((item) => item.ruleId === "functional");
+    const minorFunctional = getChordRecommendations({
+      ...recommendationInput,
+      mode: "minor"
+    }).candidates.find((item) => item.ruleId === "functional");
+
+    expect(majorFunctional?.chord).toEqual({ root: 5, quality: "major" });
+    expect(minorFunctional?.chord).toEqual({ root: 5, quality: "minor" });
+  });
+
   it("covers every named conventional and chromatic rule family across fixtures", () => {
     const fixtures = ["Cmaj7", "Dm7", "G7", "Abmaj7", "F#dim7"];
     const ids = new Set(fixtures.flatMap((sourceDisplayName) =>

@@ -60,6 +60,7 @@ interface RuleDefinition {
 
 type RecommendationScore = readonly [
   contextualPriority: number,
+  destinationFunction: number,
   negativeSharedTones: number,
   voiceLeadingDistance: number,
   rootDistance: number,
@@ -303,7 +304,8 @@ function rankRecommendation(
     category,
     ruleId,
     score: [
-      priority + destinationFunctionPenalty(chord, context),
+      priority,
+      destinationFunctionPenalty(chord, context),
       -sharedToneCount(sourcePitchClasses, candidatePitchClasses),
       aggregateVoiceLeadingDistance(sourcePitchClasses, candidatePitchClasses),
       circularDistance(context.source.root, chord.root),
