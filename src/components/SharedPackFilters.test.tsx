@@ -99,6 +99,50 @@ describe("SharedPackFilters", () => {
     expect(onChange).toHaveBeenCalledWith({ ...filters, tags: [] });
   });
 
+  it("accepts thirty astral Unicode code points through native typing", async () => {
+    const onFiltersChange = vi.fn();
+    const tag = "😀".repeat(30);
+    render(
+      <SharedPackFilters
+        queryDraft=""
+        authorDraft=""
+        filters={{}}
+        composing={false}
+        onQueryDraftChange={vi.fn()}
+        onAuthorDraftChange={vi.fn()}
+        onCompositionChange={vi.fn()}
+        onFiltersChange={onFiltersChange}
+        onClear={vi.fn()}
+      />,
+    );
+    await userEvent.type(screen.getByRole("textbox", { name: "Tags" }), tag);
+    await userEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    expect(onFiltersChange).toHaveBeenCalledWith({ tags: [tag] });
+  });
+
+  it("suppresses a case-insensitive duplicate after the controlled value rerenders", async () => {
+    const onFiltersChange = vi.fn();
+    const props = {
+      queryDraft: "",
+      authorDraft: "",
+      composing: false,
+      onQueryDraftChange: vi.fn(),
+      onAuthorDraftChange: vi.fn(),
+      onCompositionChange: vi.fn(),
+      onFiltersChange,
+      onClear: vi.fn(),
+    };
+    const view = render(<SharedPackFilters {...props} filters={{}} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Tags" }), "Bright");
+    await userEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    expect(onFiltersChange).toHaveBeenCalledWith({ tags: ["Bright"] });
+
+    view.rerender(<SharedPackFilters {...props} filters={{ tags: ["Bright"] }} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Tags" }), "bRIGHT");
+    await userEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    expect(onFiltersChange).toHaveBeenCalledTimes(1);
+  });
+
   it("adds tags with Enter and suppresses blank, duplicate, overlong, and eleventh tags", async () => {
     const onFiltersChange = vi.fn();
     const tenTags = Array.from({ length: 10 }, (_, index) => `tag-${index}`);

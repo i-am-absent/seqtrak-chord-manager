@@ -79,7 +79,6 @@ export function SharedPackFilters({
           Tags
           <input
             value={tagDraft}
-            maxLength={30}
             onChange={(event) => setTagDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
