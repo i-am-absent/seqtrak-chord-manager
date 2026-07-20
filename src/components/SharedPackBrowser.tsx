@@ -8,10 +8,26 @@ import {
   SharingValidationError,
 } from "../sharing/errors";
 import type { PackRepository } from "../sharing/packRepository";
-import type { PackCursor, PublicPack } from "../sharing/types";
+import type { PackCursor, PublicPack, SearchPackFilters } from "../sharing/types";
 import { DeleteSharedPackDialog } from "./DeleteSharedPackDialog";
+import { SharedPackFilters } from "./SharedPackFilters";
 
 const PAGE_SIZE = 20;
+
+function hasActiveFilters(value: SearchPackFilters): boolean {
+  return Boolean(value.query || value.author || value.key || value.tags?.length);
+}
+
+function requestPage(
+  repository: PackRepository,
+  committed: SearchPackFilters,
+  cursor?: PackCursor,
+) {
+  const options = { ...committed, limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) };
+  return hasActiveFilters(committed)
+    ? repository.searchPacks(options)
+    : repository.listPacks({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) });
+}
 
 export interface SharedPackBrowserProps {
   getRepository: () => PackRepository;
@@ -68,6 +84,10 @@ export function SharedPackBrowser({
   onDeletedPack,
 }: SharedPackBrowserProps) {
   const [items, setItems] = useState<PublicPack[]>([]);
+  const [queryDraft, setQueryDraft] = useState("");
+  const [authorDraft, setAuthorDraft] = useState("");
+  const [filters, setFilters] = useState<SearchPackFilters>({ tags: [] });
+  const [composing, setComposing] = useState(false);
   const [nextCursor, setNextCursor] = useState<PackCursor | null>(null);
   const [replaceState, setReplaceState] = useState<
     "loading" | "ready" | "error"
@@ -94,8 +114,9 @@ export function SharedPackBrowser({
   const deleteGenerationRef = useRef(0);
   const deletedIdsRef = useRef(new Set<string>());
   const ownershipDeniedIdsRef = useRef(new Set<string>());
+  const initialFilterEffectRef = useRef(true);
 
-  const loadFirstPage = useCallback(async () => {
+  const loadFirstPage = useCallback(async (committed: SearchPackFilters) => {
     const generation = ++generationRef.current;
     appendInFlightRef.current = false;
     setReplaceState("loading");
@@ -103,7 +124,7 @@ export function SharedPackBrowser({
     setAppendState("idle");
     setAppendError("");
     try {
-      const page = await getRepository().listPacks({ limit: PAGE_SIZE });
+      const page = await requestPage(getRepository(), committed);
       if (generation !== generationRef.current) return;
       const visibleItems = page.items.filter(
         (pack) => !deletedIdsRef.current.has(pack.id),
@@ -132,10 +153,7 @@ export function SharedPackBrowser({
     setAppendState("loading");
     setAppendError("");
     try {
-      const page = await getRepository().listPacks({
-        limit: PAGE_SIZE,
-        cursor,
-      });
+      const page = await requestPage(getRepository(), filters, cursor);
       if (generation !== generationRef.current) return;
       appendInFlightRef.current = false;
       const visibleItems = page.items.filter(
@@ -150,7 +168,7 @@ export function SharedPackBrowser({
       setAppendError(errorMessage(error));
       setAppendState("error");
     }
-  }, [appendState, getRepository, nextCursor, replaceState]);
+  }, [appendState, filters, getRepository, nextCursor, replaceState]);
 
   const completeDelete = useCallback(
     (target: PublicPack, warning: boolean) => {
@@ -201,12 +219,34 @@ export function SharedPackBrowser({
   }, [completeDelete, deleteTarget, getRepository]);
 
   useEffect(() => {
-    void loadFirstPage();
+    void loadFirstPage({ tags: [] });
     return () => {
       generationRef.current += 1;
       deleteGenerationRef.current += 1;
     };
   }, [loadFirstPage]);
+
+  useEffect(() => {
+    if (initialFilterEffectRef.current) {
+      initialFilterEffectRef.current = false;
+      return;
+    }
+    void loadFirstPage(filters);
+  }, [filters, loadFirstPage]);
+
+  useEffect(() => {
+    if (composing) return;
+    const timeout = window.setTimeout(() => {
+      const query = queryDraft.replace(/^ +| +$/g, "") || undefined;
+      const author = authorDraft.replace(/^ +| +$/g, "") || undefined;
+      setFilters((current) =>
+        current.query === query && current.author === author
+          ? current
+          : { ...current, query, author },
+      );
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [authorDraft, composing, queryDraft]);
 
   return (
     <section className="shared-browser" aria-labelledby="shared-packs-heading">
@@ -215,18 +255,37 @@ export function SharedPackBrowser({
           <h2 id="shared-packs-heading">Shared Packs</h2>
           <p>Browse the newest chord packs shared by the community.</p>
         </div>
-        <button type="button" onClick={() => void loadFirstPage()}>
+        <button type="button" onClick={() => void loadFirstPage(filters)}>
           Refresh
         </button>
       </div>
 
-      {replaceState === "loading" ? (
+      <SharedPackFilters
+        queryDraft={queryDraft}
+        authorDraft={authorDraft}
+        filters={filters}
+        composing={composing}
+        onQueryDraftChange={setQueryDraft}
+        onAuthorDraftChange={setAuthorDraft}
+        onCompositionChange={setComposing}
+        onFiltersChange={(next) => setFilters({ ...next, tags: [...(next.tags ?? [])] })}
+        onClear={() => {
+          setQueryDraft("");
+          setAuthorDraft("");
+          setFilters({ tags: [] });
+        }}
+      />
+
+      {replaceState === "loading" && items.length === 0 ? (
         <p role="status">Loading shared packs…</p>
+      ) : null}
+      {replaceState === "loading" && items.length > 0 ? (
+        <p className="shared-updating" role="status">Updating shared packs…</p>
       ) : null}
       {replaceState === "error" ? (
         <div className="shared-error" role="alert">
           <p>{replaceError}</p>
-          <button type="button" onClick={() => void loadFirstPage()}>
+          <button type="button" onClick={() => void loadFirstPage(filters)}>
             Try again
           </button>
         </div>
@@ -244,9 +303,9 @@ export function SharedPackBrowser({
         </div>
       ) : null}
       {replaceState === "ready" && items.length === 0 && !nextCursor ? (
-        <p>No shared packs yet.</p>
+        <p>{hasActiveFilters(filters) ? "No shared packs match these filters." : "No shared packs yet."}</p>
       ) : null}
-      {replaceState === "ready" && items.length > 0 ? (
+      {items.length > 0 ? (
         <div className="shared-pack-grid">
           {items.map((pack) => (
             <article className="shared-pack-card panel" key={pack.id}>

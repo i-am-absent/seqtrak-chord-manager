@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPack } from "../domain/music";
 import {
   PackOwnershipError,
@@ -48,6 +48,143 @@ function fakeRepository(
     ...overrides,
   };
 }
+
+afterEach(() => vi.useRealTimers());
+
+function renderBrowser(repository: PackRepository, onLoadPack = vi.fn()) {
+  return render(
+    <SharedPackBrowser
+      getRepository={() => repository}
+      onLoadPack={onLoadPack}
+      onDeletedPack={vi.fn()}
+    />,
+  );
+}
+
+describe("SharedPackBrowser filters", () => {
+  it("debounces normalized combined and author text before server search", async () => {
+    vi.useFakeTimers();
+    const searchPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      { searchPacks },
+    );
+    renderBrowser(repository);
+    await act(async () => vi.runOnlyPendingTimers());
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search packs" }), { target: { value: " warm " } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Author" }), { target: { value: " Ada " } });
+    act(() => vi.advanceTimersByTime(299));
+    expect(searchPacks).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(searchPacks).toHaveBeenLastCalledWith({
+      limit: 20, query: "warm", author: "Ada", tags: [],
+    });
+  });
+
+  it("defers text search during IME composition", async () => {
+    vi.useFakeTimers();
+    const searchPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    renderBrowser(fakeRepository(vi.fn().mockResolvedValue({ items: [], nextCursor: null }), { searchPacks }));
+    await act(async () => vi.runOnlyPendingTimers());
+    const input = screen.getByRole("searchbox", { name: "Search packs" });
+    act(() => {
+      fireEvent.compositionStart(input);
+      fireEvent.change(input, { target: { value: "和" } });
+      vi.advanceTimersByTime(600);
+    });
+    expect(searchPacks).not.toHaveBeenCalled();
+    act(() => fireEvent.compositionEnd(input));
+    await act(async () => vi.advanceTimersByTime(300));
+    expect(searchPacks).toHaveBeenCalledWith({ limit: 20, query: "和", tags: [] });
+  });
+
+  it("applies key and tags immediately, suppresses duplicates, removes chips, and clears", async () => {
+    const searchPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const listPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const repository = fakeRepository(listPacks, { searchPacks });
+    renderBrowser(repository);
+    await screen.findByText("No shared packs yet.");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "D");
+    expect(searchPacks).toHaveBeenLastCalledWith({ limit: 20, key: "D", tags: [] });
+    const tag = screen.getByRole("textbox", { name: "Tags" });
+    await userEvent.type(tag, "Pop{Enter}");
+    expect(searchPacks).toHaveBeenLastCalledWith({ limit: 20, key: "D", tags: ["Pop"] });
+    await userEvent.type(tag, "pop{Enter}");
+    expect(searchPacks).toHaveBeenCalledTimes(2);
+    await userEvent.click(screen.getByRole("button", { name: "Remove tag Pop" }));
+    expect(searchPacks).toHaveBeenLastCalledWith({ limit: 20, key: "D", tags: [] });
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(listPacks).toHaveBeenLastCalledWith({ limit: 20 });
+  });
+
+  it("routes filtered pagination, refresh, retry, empty copy, and original load value", async () => {
+    const original = publicPack("00000000-0000-4000-8000-000000000001", "Filtered");
+    const cursor = { createdAt: original.createdAt, id: original.id };
+    const searchPacks = vi.fn()
+      .mockResolvedValueOnce({ items: [original], nextCursor: cursor })
+      .mockResolvedValueOnce({ items: [], nextCursor: null })
+      .mockRejectedValueOnce(new Error("filtered failed"))
+      .mockResolvedValue({ items: [], nextCursor: null });
+    const repository = fakeRepository(vi.fn().mockResolvedValue({ items: [], nextCursor: null }), { searchPacks });
+    const onLoad = vi.fn();
+    renderBrowser(repository, onLoad);
+    await screen.findByText("No shared packs yet.");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "C");
+    await userEvent.click(await screen.findByRole("button", { name: "Load Filtered into editor" }));
+    expect(onLoad).toHaveBeenCalledWith(original);
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(searchPacks).toHaveBeenNthCalledWith(2, { key: "C", tags: [], limit: 20, cursor });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("filtered failed");
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(searchPacks).toHaveBeenLastCalledWith({ key: "C", tags: [], limit: 20 });
+    expect(await screen.findByText("No shared packs match these filters.")).toBeInTheDocument();
+  });
+
+  it("preserves cards while replacing and ignores stale unfiltered completion", async () => {
+    const initial = deferred<PackPage>();
+    const fresh = publicPack("00000000-0000-4000-8000-000000000002", "Fresh filtered");
+    const repository = fakeRepository(vi.fn().mockReturnValue(initial.promise), {
+      searchPacks: vi.fn().mockResolvedValue({ items: [fresh], nextCursor: null }),
+    });
+    renderBrowser(repository);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "D");
+    await screen.findByRole("heading", { name: "Fresh filtered" });
+    await act(async () => initial.reject(new Error("stale")));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    const replacement = deferred<PackPage>();
+    vi.mocked(repository.searchPacks).mockReturnValueOnce(replacement.promise);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "E");
+    expect(screen.getByRole("heading", { name: "Fresh filtered" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Updating shared packs…");
+    await act(async () => replacement.resolve({ items: [], nextCursor: null }));
+  });
+
+  it("invalidates filtered append and suppresses a deleted ID from overlapping responses", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned filtered");
+    const cursor = { createdAt: owned.createdAt, id: owned.id };
+    const append = deferred<PackPage>();
+    const searchPacks = vi.fn()
+      .mockResolvedValueOnce({ items: [owned], nextCursor: cursor })
+      .mockReturnValueOnce(append.promise)
+      .mockResolvedValueOnce({ items: [owned], nextCursor: null });
+    const repository = fakeRepository(vi.fn().mockResolvedValue({ items: [], nextCursor: null }), {
+      searchPacks,
+      ownsPack: vi.fn().mockReturnValue(true),
+      deletePack: vi.fn().mockResolvedValue(undefined),
+    });
+    renderBrowser(repository);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "C");
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned filtered" }));
+    act(() => screen.getByRole("button", { name: "Load more" }).click());
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "D");
+    await act(async () => append.resolve({ items: [owned], nextCursor: null }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Owned filtered" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
 
 describe("SharedPackBrowser deletion", () => {
   it("shows Delete only for owned packs and removes a confirmed deletion in place", async () => {
@@ -350,8 +487,9 @@ describe("SharedPackBrowser initial list", () => {
       screen.getByRole("heading", { name: "Newest Pack" }).closest("article"),
     ).toHaveClass("shared-pack-card", "panel");
     expect(screen.getByText("pop")).toHaveClass("shared-tag");
+    const card = screen.getByRole("heading", { name: "Newest Pack" }).closest("article")!;
     for (const chord of pack.chords) {
-      expect(screen.getByText(chord.displayName)).toBeInTheDocument();
+      expect(within(card).getByText(chord.displayName)).toBeInTheDocument();
     }
     expect(
       screen.getByRole("button", { name: "Load Newest Pack into editor" }),
