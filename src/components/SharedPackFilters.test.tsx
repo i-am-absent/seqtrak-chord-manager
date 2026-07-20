@@ -32,6 +32,22 @@ function Harness({ initial = {} }: { initial?: SearchPackFilters }) {
 }
 
 describe("SharedPackFilters", () => {
+  it("groups the three primary controls in the responsive filter fields", () => {
+    const { container } = render(<Harness />);
+    const fields = container.querySelector(".shared-filter-fields");
+    expect(fields).toBeInTheDocument();
+    expect(Array.from(fields!.children, (child) => child.tagName)).toEqual([
+      "LABEL",
+      "LABEL",
+      "LABEL",
+    ]);
+    expect(Array.from(fields!.children, (child) => child.textContent?.trim())).toEqual([
+      "Search packs",
+      "Author",
+      `Pack KeyAll Keys${chromaticKeys.join("")}`,
+    ]);
+  });
+
   it("labels every control and offers all twelve pack keys", () => {
     render(<Harness />);
     expect(screen.getByRole("searchbox", { name: "Search packs" })).toBeInTheDocument();

@@ -42,38 +42,40 @@ export function SharedPackFilters({
 
   return (
     <form className="shared-filters" onSubmit={(event) => event.preventDefault()}>
-      <label>
-        Search packs
-        <input
-          type="search"
-          value={queryDraft}
-          onChange={(event) => onQueryDraftChange(event.target.value)}
-          onCompositionStart={() => onCompositionChange(true)}
-          onCompositionEnd={() => onCompositionChange(false)}
-        />
-      </label>
-      <label>
-        Author
-        <input
-          value={authorDraft}
-          onChange={(event) => onAuthorDraftChange(event.target.value)}
-          onCompositionStart={() => onCompositionChange(true)}
-          onCompositionEnd={() => onCompositionChange(false)}
-        />
-      </label>
-      <label>
-        Pack Key
-        <select
-          value={filters.key ?? ""}
-          onChange={(event) => onFiltersChange({
-            ...filters,
-            key: event.target.value ? event.target.value as KeyName : undefined,
-          })}
-        >
-          <option value="">All Keys</option>
-          {chromaticKeys.map((key) => <option key={key} value={key}>{key}</option>)}
-        </select>
-      </label>
+      <div className="shared-filter-fields">
+        <label>
+          Search packs
+          <input
+            type="search"
+            value={queryDraft}
+            onChange={(event) => onQueryDraftChange(event.target.value)}
+            onCompositionStart={() => onCompositionChange(true)}
+            onCompositionEnd={() => onCompositionChange(false)}
+          />
+        </label>
+        <label>
+          Author
+          <input
+            value={authorDraft}
+            onChange={(event) => onAuthorDraftChange(event.target.value)}
+            onCompositionStart={() => onCompositionChange(true)}
+            onCompositionEnd={() => onCompositionChange(false)}
+          />
+        </label>
+        <label>
+          Pack Key
+          <select
+            value={filters.key ?? ""}
+            onChange={(event) => onFiltersChange({
+              ...filters,
+              key: event.target.value ? event.target.value as KeyName : undefined,
+            })}
+          >
+            <option value="">All Keys</option>
+            {chromaticKeys.map((key) => <option key={key} value={key}>{key}</option>)}
+          </select>
+        </label>
+      </div>
       <div className="shared-tag-filter">
         <label>
           Tags
