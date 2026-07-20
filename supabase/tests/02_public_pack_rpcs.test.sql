@@ -57,7 +57,7 @@ grant usage on schema test_helpers to anon;
 grant execute on function test_helpers.valid_pack_payload(text,text) to anon;
 grant execute on function test_helpers.replacement_pack_payload() to anon;
 
-select plan(120);
+select plan(151);
 
 select has_function('private', 'ownership_token_matches', array['text','text']);
 select ok(not exists (
@@ -89,6 +89,11 @@ select is(private.ownership_token_matches(repeat('f', 64), null), false);
 select has_function('public', 'create_pack', array['jsonb','text']);
 select has_function('public', 'get_pack', array['uuid']);
 select has_function('public', 'list_packs', array['integer','timestamp with time zone','uuid']);
+select has_function(
+  'public',
+  'search_packs',
+  array['integer','timestamp with time zone','uuid','text','text','text','text[]']
+);
 select has_function('public', 'update_pack', array['uuid','jsonb','text']);
 select has_function('public', 'delete_pack', array['uuid','text']);
 select has_function('public', 'report_pack', array['uuid']);
@@ -103,6 +108,12 @@ select is(
 );
 select is(
   (select prosecdef from pg_proc where oid = to_regprocedure('public.list_packs(integer,timestamp with time zone,uuid)')),
+  true
+);
+select is(
+  (select prosecdef from pg_proc where oid = to_regprocedure(
+    'public.search_packs(integer,timestamp with time zone,uuid,text,text,text,text[])'
+  )),
   true
 );
 select is(
@@ -130,6 +141,12 @@ select is(
   array['search_path=""']::text[]
 );
 select is(
+  (select proconfig from pg_proc where oid = to_regprocedure(
+    'public.search_packs(integer,timestamp with time zone,uuid,text,text,text,text[])'
+  )),
+  array['search_path=""']::text[]
+);
+select is(
   (select proconfig from pg_proc where oid = to_regprocedure('public.update_pack(uuid,jsonb,text)')),
   array['search_path=""']::text[]
 );
@@ -150,6 +167,11 @@ select ok(not exists (
     and grantee = 'PUBLIC'
     and privilege_type = 'EXECUTE'
 ));
+select ok(not coalesce(has_function_privilege(
+  'public',
+  to_regprocedure('public.search_packs(integer,timestamp with time zone,uuid,text,text,text,text[])'),
+  'execute'
+), false));
 select ok(not exists (
   select 1
   from information_schema.routine_privileges
@@ -194,9 +216,19 @@ select ok(not exists (
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.create_pack(jsonb,text)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.get_pack(uuid)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.list_packs(integer,timestamp with time zone,uuid)'), 'execute'), false));
+select ok(coalesce(has_function_privilege(
+  'anon',
+  to_regprocedure('public.search_packs(integer,timestamp with time zone,uuid,text,text,text,text[])'),
+  'execute'
+), false));
 select ok(coalesce(has_function_privilege('authenticated', to_regprocedure('public.create_pack(jsonb,text)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('authenticated', to_regprocedure('public.get_pack(uuid)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('authenticated', to_regprocedure('public.list_packs(integer,timestamp with time zone,uuid)'), 'execute'), false));
+select ok(coalesce(has_function_privilege(
+  'authenticated',
+  to_regprocedure('public.search_packs(integer,timestamp with time zone,uuid,text,text,text,text[])'),
+  'execute'
+), false));
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.update_pack(uuid,jsonb,text)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.delete_pack(uuid,text)'), 'execute'), false));
 select ok(coalesce(has_function_privilege('anon', to_regprocedure('public.report_pack(uuid)'), 'execute'), false));
@@ -260,7 +292,8 @@ set id = case pack_name
     when 'Anonymous' then '2026-07-17 12:01:00+00'::timestamptz
     when 'Safe' then '2026-07-17 12:01:00+00'::timestamptz
     when 'Hash' then '2026-07-17 12:00:00+00'::timestamptz
-  end;
+  end,
+  musical_key = case when pack_name = 'First' then 'C' else 'D' end;
 
 insert into public.chord_packs(
   id, pack_name, author_name, tags, musical_key, track_sound_name, chords,
@@ -277,6 +310,85 @@ insert into public.chord_packs(
   extensions.crypt(repeat('d', 64), extensions.gen_salt('bf', 10)), true, '2026-07-17 12:03:00+00'
 );
 
+savepoint search_pack_fixtures;
+
+insert into public.chord_packs(
+  id, pack_name, author_name, tags, musical_key, track_sound_name, chords,
+  ownership_token_hash, hidden, deleted, created_at
+) values
+  ('00000000-0000-0000-0000-000000000010', 'Safe Search', 'Ada', array['Pop','BriGhT'], 'C',
+   'sound-only', '[{"slotIndex":1,"notes":[60],"displayName":"chord-only"}]',
+   extensions.crypt(repeat('1', 64), extensions.gen_salt('bf', 10)), false, false, '2026-07-17 12:10:00+00'),
+  ('00000000-0000-0000-0000-000000000011', 'Literal % _ \\', 'Literal Author', array['Symbols'], 'C',
+   'Pad', '[]', extensions.crypt(repeat('2', 64), extensions.gen_salt('bf', 10)), false, false, '2026-07-17 12:09:00+00'),
+  ('00000000-0000-0000-0000-000000000012', 'Shared Alpha', 'Pager', array['Shared'], 'G',
+   'Pad', '[]', extensions.crypt(repeat('3', 64), extensions.gen_salt('bf', 10)), false, false, '2026-07-17 12:08:00+00'),
+  ('00000000-0000-0000-0000-000000000013', 'Shared Beta', 'Pager', array['SHARED'], 'G',
+   'Pad', '[]', extensions.crypt(repeat('4', 64), extensions.gen_salt('bf', 10)), false, false, '2026-07-17 12:07:00+00'),
+  ('00000000-0000-0000-0000-000000000014', 'Shared Gamma', 'Pager', array['shared'], 'G',
+   'Pad', '[]', extensions.crypt(repeat('5', 64), extensions.gen_salt('bf', 10)), false, false, '2026-07-17 12:06:00+00'),
+  ('00000000-0000-0000-0000-000000000015', 'Hidden Search', 'A', array['hidden-match'], 'C',
+   'Pad', '[]', extensions.crypt(repeat('6', 64), extensions.gen_salt('bf', 10)), true, false, '2026-07-17 12:05:30+00'),
+  ('00000000-0000-0000-0000-000000000016', 'Deleted Search', 'A', array['deleted-match'], 'C',
+   'Pad', '[]', extensions.crypt(repeat('7', 64), extensions.gen_salt('bf', 10)), false, true, '2026-07-17 12:05:00+00');
+
+set local role anon;
+
+select is((public.search_packs(query_text => 'FIRST')->'items'->0->>'packName'), 'First');
+select is(jsonb_array_length(public.search_packs(query_text => 'ada')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(query_text => 'BRIGHT')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(author_text => 'dA')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(musical_key => 'C')->'items'), 3);
+select is(jsonb_array_length(public.search_packs(required_tags => array['POP','bright'])->'items'), 1);
+select is(jsonb_array_length(public.search_packs(
+  query_text => 'safe', author_text => 'ada', musical_key => 'C', required_tags => array['pop']
+)->'items'), 1);
+select is(jsonb_array_length(public.search_packs(query_text => '%')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(query_text => '_')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(query_text => E'\\')->'items'), 1);
+select is(jsonb_array_length(public.search_packs(query_text => 'sound-only')->'items'), 0);
+select is(jsonb_array_length(public.search_packs(query_text => 'chord-only')->'items'), 0);
+select ok(not (public.search_packs(query_text => 'hidden-match')->'items' @> '[{"packName":"Hidden Search"}]'::jsonb));
+select ok(not (public.search_packs(query_text => 'deleted-match')->'items' @> '[{"packName":"Deleted Search"}]'::jsonb));
+
+select throws_ok($$ select public.search_packs(page_limit => 0) $$, '22023', 'INVALID_PAGE_LIMIT');
+select throws_ok($$ select public.search_packs(page_limit => 101) $$, '22023', 'INVALID_PAGE_LIMIT');
+select throws_ok($$ select public.search_packs(cursor_created_at => now()) $$, '22023', 'INVALID_PAGE_CURSOR');
+select throws_ok($$ select public.search_packs(query_text => repeat('x', 101)) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(author_text => repeat('x', 51)) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(musical_key => 'Db') $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(required_tags => array['pop','POP']) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(required_tags => array_fill('x'::text, array[11])) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(required_tags => array['']) $$, '22023', 'INVALID_SEARCH_FILTER');
+
+select is(
+  (select jsonb_agg(item->>'id')
+   from (
+     select item from jsonb_array_elements(public.search_packs(
+       page_limit => 2, query_text => 'shared', required_tags => array['shared']
+     )->'items') item
+     union all
+     select item from jsonb_array_elements(public.search_packs(
+       page_limit => 2,
+       cursor_created_at => (public.search_packs(page_limit => 2, query_text => 'shared', required_tags => array['shared'])->'nextCursor'->>'createdAt')::timestamptz,
+       cursor_id => (public.search_packs(page_limit => 2, query_text => 'shared', required_tags => array['shared'])->'nextCursor'->>'id')::uuid,
+       query_text => 'shared', required_tags => array['shared']
+     )->'items') item
+   ) pages),
+  '["00000000-0000-0000-0000-000000000012", "00000000-0000-0000-0000-000000000013", "00000000-0000-0000-0000-000000000014"]'::jsonb
+);
+select is(
+  public.search_packs(
+    page_limit => 2,
+    cursor_created_at => (public.search_packs(page_limit => 2, query_text => 'shared', required_tags => array['shared'])->'nextCursor'->>'createdAt')::timestamptz,
+    cursor_id => (public.search_packs(page_limit => 2, query_text => 'shared', required_tags => array['shared'])->'nextCursor'->>'id')::uuid,
+    query_text => 'shared', required_tags => array['shared']
+  )->'nextCursor',
+  'null'::jsonb
+);
+
+reset role;
+rollback to savepoint search_pack_fixtures;
 set local role anon;
 
 select is(
