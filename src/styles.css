@@ -489,6 +489,63 @@ button.slot-card:hover {
   gap: 8px;
 }
 
+.shared-filters {
+  background: #f8fafc;
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.shared-filter-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 2fr) minmax(160px, 1fr) minmax(120px, auto);
+}
+
+.shared-filter-fields label,
+.shared-tag-filter label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shared-filter-fields input,
+.shared-filter-fields select,
+.shared-tag-filter input {
+  border: 1px solid #cfd6e2;
+  border-radius: 6px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 7px 9px;
+}
+
+.shared-tag-filter,
+.shared-filter-chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shared-filter-chip {
+  align-items: center;
+  background: #e8eefc;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 4px 8px;
+}
+
+.shared-updating {
+  color: #4b5565;
+  margin: 0;
+}
+
 .shared-pack-grid {
   display: grid;
   gap: 16px;
@@ -858,6 +915,10 @@ button.slot-card:hover {
 }
 
 @media (max-width: 640px) {
+  .shared-filter-fields {
+    grid-template-columns: 1fr;
+  }
+
   .recommendation-panel .recommendation-header {
     align-items: stretch;
     flex-direction: column;

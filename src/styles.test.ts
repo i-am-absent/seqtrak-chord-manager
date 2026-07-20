@@ -30,3 +30,14 @@ describe("seven-slot recommendation styles", () => {
     expect(styles).not.toMatch(/\.recommendation[^}]*outline:\s*none/s);
   });
 });
+
+describe("shared pack filter styles", () => {
+  it("lays out responsive controls and wraps filter chips", () => {
+    expect(styles).toMatch(/\.shared-filter-fields\s*{[^}]*display:\s*grid/);
+    expect(styles).toMatch(/\.shared-filter-chips\s*{[^}]*flex-wrap:\s*wrap/);
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.shared-filter-fields\s*{[^}]*grid-template-columns:\s*1fr/,
+    );
+    expect(styles).toMatch(/\.shared-filter-chip\s*{[^}]*border-radius:\s*999px/);
+  });
+});
