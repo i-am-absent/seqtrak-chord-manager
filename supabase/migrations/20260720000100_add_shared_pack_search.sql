@@ -17,6 +17,7 @@ declare
   effective_limit integer := coalesce(page_limit, 20);
   normalized_query text := nullif(btrim(query_text, ' '), '');
   normalized_author text := nullif(btrim(author_text, ' '), '');
+  normalized_musical_key text := musical_key;
   normalized_tags text[] := coalesce(required_tags, array[]::text[]);
   escaped_query text;
   escaped_author text;
@@ -41,7 +42,7 @@ begin
   if normalized_author is not null and char_length(normalized_author) > 50 then
     raise exception 'INVALID_SEARCH_FILTER' using errcode = '22023';
   end if;
-  if musical_key is not null and not (musical_key = any(
+  if normalized_musical_key is not null and not (normalized_musical_key = any(
     array['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
   )) then
     raise exception 'INVALID_SEARCH_FILTER' using errcode = '22023';
@@ -86,7 +87,7 @@ begin
         normalized_author is null
         or p.author_name ilike '%' || escaped_author || '%' escape E'\\'
       )
-      and (musical_key is null or p.musical_key = musical_key)
+      and (normalized_musical_key is null or p.musical_key = normalized_musical_key)
       and not exists (
         select 1 from unnest(normalized_tag_keys) required_tag
         where not exists (
