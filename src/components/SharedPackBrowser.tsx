@@ -225,9 +225,12 @@ export function SharedPackBrowser({
     return () => {
       cancelled = true;
       generationRef.current += 1;
-      deleteGenerationRef.current += 1;
     };
   }, [filters, loadFirstPage]);
+
+  useEffect(() => () => {
+    deleteGenerationRef.current += 1;
+  }, []);
 
   useEffect(() => {
     if (composing) return;

@@ -231,6 +231,35 @@ describe("SharedPackBrowser filters", () => {
 });
 
 describe("SharedPackBrowser deletion", () => {
+  it("completes an in-flight deletion after filters change", async () => {
+    const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned pending");
+    const deletion = deferred<void>();
+    const onDeletedPack = vi.fn();
+    const repository = fakeRepository(
+      vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+      {
+        searchPacks: vi.fn().mockResolvedValue({ items: [owned], nextCursor: null }),
+        ownsPack: vi.fn().mockReturnValue(true),
+        deletePack: vi.fn().mockReturnValue(deletion.promise),
+      },
+    );
+    render(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={onDeletedPack}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Owned pending" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete pack" }));
+    expect(screen.getByRole("button", { name: "Deleting…" })).toBeDisabled();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "D");
+    await act(async () => deletion.resolve());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "Owned pending" })).not.toBeInTheDocument();
+    expect(onDeletedPack).toHaveBeenCalledWith(owned);
+  });
+
   it("shows Delete only for owned packs and removes a confirmed deletion in place", async () => {
     const owned = publicPack("00000000-0000-4000-8000-000000000001", "Owned");
     const other = publicPack("00000000-0000-4000-8000-000000000002", "Other");
