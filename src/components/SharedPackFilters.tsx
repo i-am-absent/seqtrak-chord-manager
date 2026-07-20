@@ -38,7 +38,19 @@ export function SharedPackFilters({
     onFiltersChange({ ...filters, tags: [...tags, tag] });
     setTagDraft("");
   };
-  const hasValues = Boolean(queryDraft || authorDraft || filters.key || tags.length);
+  const hasText = (value?: string) => Boolean(value?.replace(/^ +| +$/g, ""));
+  const hasValues = Boolean(
+    hasText(queryDraft) ||
+    hasText(authorDraft) ||
+    hasText(filters.query) ||
+    hasText(filters.author) ||
+    filters.key ||
+    tags.length,
+  );
+  const handleClear = () => {
+    setTagDraft("");
+    onClear();
+  };
 
   return (
     <form className="shared-filters" onSubmit={(event) => event.preventDefault()}>
@@ -109,7 +121,7 @@ export function SharedPackFilters({
           </span>
         ))}
       </div>
-      <button type="button" disabled={!hasValues} onClick={onClear}>
+      <button type="button" disabled={!hasValues} onClick={handleClear}>
         Clear filters
       </button>
     </form>

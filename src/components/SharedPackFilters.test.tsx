@@ -263,4 +263,62 @@ describe("SharedPackFilters", () => {
     await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(onClear).toHaveBeenCalledOnce();
   });
+
+  it("keeps Clear enabled while committed query or author filters remain", () => {
+    const props = {
+      queryDraft: "",
+      authorDraft: "",
+      composing: false,
+      onQueryDraftChange: vi.fn(),
+      onAuthorDraftChange: vi.fn(),
+      onCompositionChange: vi.fn(),
+      onFiltersChange: vi.fn(),
+      onClear: vi.fn(),
+    };
+    const view = render(<SharedPackFilters {...props} filters={{ query: "pads" }} />);
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeEnabled();
+
+    view.rerender(<SharedPackFilters {...props} filters={{ author: "Ada" }} />);
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeEnabled();
+  });
+
+  it("disables Clear when drafts and committed text filters contain only ASCII spaces", () => {
+    render(
+      <SharedPackFilters
+        queryDraft="   "
+        authorDraft=" "
+        filters={{ query: "  ", author: " " }}
+        composing={false}
+        onQueryDraftChange={vi.fn()}
+        onAuthorDraftChange={vi.fn()}
+        onCompositionChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeDisabled();
+  });
+
+  it("clears the local tag draft before delegating Clear", async () => {
+    const onClear = vi.fn();
+    render(
+      <SharedPackFilters
+        queryDraft="active"
+        authorDraft=""
+        filters={{}}
+        composing={false}
+        onQueryDraftChange={vi.fn()}
+        onAuthorDraftChange={vi.fn()}
+        onCompositionChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onClear={onClear}
+      />,
+    );
+    const tagInput = screen.getByRole("textbox", { name: "Tags" });
+    await userEvent.type(tagInput, "bright");
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(tagInput).toHaveValue("");
+    expect(onClear).toHaveBeenCalledOnce();
+  });
 });
