@@ -114,7 +114,6 @@ export function SharedPackBrowser({
   const deleteGenerationRef = useRef(0);
   const deletedIdsRef = useRef(new Set<string>());
   const ownershipDeniedIdsRef = useRef(new Set<string>());
-  const initialFilterEffectRef = useRef(true);
 
   const loadFirstPage = useCallback(async (committed: SearchPackFilters) => {
     const generation = ++generationRef.current;
@@ -219,19 +218,15 @@ export function SharedPackBrowser({
   }, [completeDelete, deleteTarget, getRepository]);
 
   useEffect(() => {
-    void loadFirstPage({ tags: [] });
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void loadFirstPage(filters);
+    });
     return () => {
+      cancelled = true;
       generationRef.current += 1;
       deleteGenerationRef.current += 1;
     };
-  }, [loadFirstPage]);
-
-  useEffect(() => {
-    if (initialFilterEffectRef.current) {
-      initialFilterEffectRef.current = false;
-      return;
-    }
-    void loadFirstPage(filters);
   }, [filters, loadFirstPage]);
 
   useEffect(() => {

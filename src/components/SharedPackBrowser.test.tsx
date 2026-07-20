@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPack } from "../domain/music";
 import {
@@ -62,6 +63,49 @@ function renderBrowser(repository: PackRepository, onLoadPack = vi.fn()) {
 }
 
 describe("SharedPackBrowser filters", () => {
+  it("starts the initial list exactly once under StrictMode effect replay", async () => {
+    const listPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const repository = fakeRepository(listPacks);
+    render(
+      <StrictMode>
+        <SharedPackBrowser
+          getRepository={() => repository}
+          onLoadPack={vi.fn()}
+          onDeletedPack={vi.fn()}
+        />
+      </StrictMode>,
+    );
+    await screen.findByText("No shared packs yet.");
+    expect(listPacks).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses current filters exactly once when getRepository identity changes", async () => {
+    const listPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const searchPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+    const repository = fakeRepository(listPacks, { searchPacks });
+    const firstGetRepository = () => repository;
+    const view = render(
+      <SharedPackBrowser
+        getRepository={firstGetRepository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await screen.findByText("No shared packs yet.");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Pack Key" }), "D");
+    await waitFor(() => expect(searchPacks).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <SharedPackBrowser
+        getRepository={() => repository}
+        onLoadPack={vi.fn()}
+        onDeletedPack={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(searchPacks).toHaveBeenCalledTimes(2));
+    expect(searchPacks).toHaveBeenLastCalledWith({ key: "D", tags: [], limit: 20 });
+    expect(listPacks).toHaveBeenCalledTimes(1);
+  });
+
   it("debounces normalized combined and author text before server search", async () => {
     vi.useFakeTimers();
     const searchPacks = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
