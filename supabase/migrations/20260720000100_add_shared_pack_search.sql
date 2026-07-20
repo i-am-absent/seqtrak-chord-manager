@@ -50,6 +50,9 @@ begin
     raise exception 'INVALID_SEARCH_FILTER' using errcode = '22023';
   end if;
   foreach tag_value in array normalized_tags loop
+    if tag_value is null then
+      raise exception 'INVALID_SEARCH_FILTER' using errcode = '22023';
+    end if;
     normalized_tag_value := btrim(tag_value, ' ');
     if char_length(normalized_tag_value) not between 1 and 30
        or lower(normalized_tag_value) = any(normalized_tag_keys) then

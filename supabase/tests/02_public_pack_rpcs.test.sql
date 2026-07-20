@@ -57,7 +57,7 @@ grant usage on schema test_helpers to anon;
 grant execute on function test_helpers.valid_pack_payload(text,text) to anon;
 grant execute on function test_helpers.replacement_pack_payload() to anon;
 
-select plan(151);
+select plan(153);
 
 select has_function('private', 'ownership_token_matches', array['text','text']);
 select ok(not exists (
@@ -360,6 +360,8 @@ select throws_ok($$ select public.search_packs(musical_key => 'Db') $$, '22023',
 select throws_ok($$ select public.search_packs(required_tags => array['pop','POP']) $$, '22023', 'INVALID_SEARCH_FILTER');
 select throws_ok($$ select public.search_packs(required_tags => array_fill('x'::text, array[11])) $$, '22023', 'INVALID_SEARCH_FILTER');
 select throws_ok($$ select public.search_packs(required_tags => array['']) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(required_tags => array[null]::text[]) $$, '22023', 'INVALID_SEARCH_FILTER');
+select throws_ok($$ select public.search_packs(required_tags => array[repeat('界', 31)]) $$, '22023', 'INVALID_SEARCH_FILTER');
 
 select is(
   (select jsonb_agg(item->>'id')
