@@ -39,6 +39,7 @@ function fakeRepository(
   return {
     ownsPack: vi.fn().mockReturnValue(false),
     listPacks,
+    searchPacks: vi.fn(),
     createPack: vi.fn(),
     updatePack: vi.fn(),
     deletePack: vi.fn(),

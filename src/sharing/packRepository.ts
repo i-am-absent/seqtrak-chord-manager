@@ -1,4 +1,4 @@
-import type { EditablePack, ListPackOptions, PackPage, PublicPack } from "./types";
+import type { EditablePack, ListPackOptions, PackPage, PublicPack, SearchPackOptions } from "./types";
 
 export interface PackRepository {
   ownsPack(packId: string): boolean;
@@ -8,4 +8,5 @@ export interface PackRepository {
   reportPack(packId: string): Promise<void>;
   getPack(packId: string): Promise<PublicPack | null>;
   listPacks(options?: ListPackOptions): Promise<PackPage>;
+  searchPacks(options: SearchPackOptions): Promise<PackPage>;
 }

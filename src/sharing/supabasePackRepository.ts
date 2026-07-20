@@ -21,7 +21,8 @@ import type {
   ListPackOptions,
   PackCursor,
   PackPage,
-  PublicPack
+  PublicPack,
+  SearchPackOptions
 } from "./types";
 
 export interface SupabaseRpcClient {
@@ -210,6 +211,12 @@ function toPayload(pack: EditablePack): EditablePack {
   return payload;
 }
 
+function trimAsciiSpaces(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.replace(/^ +| +$/g, "");
+  return normalized || undefined;
+}
+
 function scrubMessage(message: string, secrets: readonly string[]): string {
   return secrets.reduce(
     (safe, secret) => secret ? safe.split(secret).join("[redacted]") : safe,
@@ -313,6 +320,22 @@ export class SupabasePackRepository implements PackRepository {
       page_limit: options.limit,
       cursor_created_at: options.cursor?.createdAt,
       cursor_id: options.cursor?.id
+    });
+    return parsePage(data);
+  }
+
+  async searchPacks(options: SearchPackOptions): Promise<PackPage> {
+    const tags = options.tags
+      ?.map((tag) => trimAsciiSpaces(tag))
+      .filter((tag): tag is string => tag !== undefined);
+    const data = await this.call("search_packs", {
+      page_limit: options.limit,
+      cursor_created_at: options.cursor?.createdAt,
+      cursor_id: options.cursor?.id,
+      query_text: trimAsciiSpaces(options.query),
+      author_text: trimAsciiSpaces(options.author),
+      musical_key: options.key,
+      required_tags: tags?.length ? [...tags] : undefined
     });
     return parsePage(data);
   }

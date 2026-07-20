@@ -31,3 +31,15 @@ export interface ListPackOptions {
   limit?: number;
   cursor?: PackCursor;
 }
+
+export interface SearchPackFilters {
+  query?: string;
+  author?: string;
+  key?: KeyName;
+  tags?: string[];
+}
+
+export interface SearchPackOptions extends SearchPackFilters {
+  limit?: number;
+  cursor?: PackCursor;
+}

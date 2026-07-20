@@ -270,6 +270,56 @@ describe("SupabasePackRepository lifecycle", () => {
       } }
     ]);
   });
+
+  it("maps normalized search filters and cursor to search_packs", async () => {
+    const { client, repository } = setup();
+    const cursor = { createdAt: "2026-07-17T00:00:00.000Z", id: publicPack.id };
+    const tags = [" pop ", "BRIGHT"];
+    client.responses.push({ data: { items: [publicPack], nextCursor: null }, error: null });
+
+    await expect(repository.searchPacks({
+      limit: 20,
+      cursor,
+      query: "  warm  ",
+      author: " Ada ",
+      key: "C",
+      tags
+    })).resolves.toEqual({ items: [publicPack], nextCursor: null });
+
+    expect(client.calls).toEqual([{
+      name: "search_packs",
+      args: {
+        page_limit: 20,
+        cursor_created_at: cursor.createdAt,
+        cursor_id: cursor.id,
+        query_text: "warm",
+        author_text: "Ada",
+        musical_key: "C",
+        required_tags: ["pop", "BRIGHT"]
+      }
+    }]);
+    expect(client.calls[0]?.args.required_tags).not.toBe(tags);
+  });
+
+  it("maps inactive optional filters to undefined rpc arguments", async () => {
+    const { client, repository } = setup();
+    client.responses.push({ data: { items: [], nextCursor: null }, error: null });
+
+    await repository.searchPacks({ query: "   ", author: "", tags: [] });
+
+    expect(client.calls[0]).toEqual({
+      name: "search_packs",
+      args: {
+        page_limit: undefined,
+        cursor_created_at: undefined,
+        cursor_id: undefined,
+        query_text: undefined,
+        author_text: undefined,
+        musical_key: undefined,
+        required_tags: undefined
+      }
+    });
+  });
 });
 
 describe("SupabasePackRepository response boundary", () => {
@@ -338,6 +388,25 @@ describe("SupabasePackRepository response boundary", () => {
     });
 
     await expect(repository.listPacks()).rejects.toBeInstanceOf(SharingResponseError);
+  });
+
+  it("rejects a malformed search page", async () => {
+    const { client, repository } = setup();
+    client.responses.push({ data: { items: "raw service data", nextCursor: null }, error: null });
+
+    await expect(repository.searchPacks({})).rejects.toBeInstanceOf(SharingResponseError);
+  });
+
+  it("maps search SQLSTATE 22023 without returning raw service data", async () => {
+    const { client, repository } = setup();
+    const rawData = { internal: "must not escape" };
+    client.responses.push({ data: rawData, error: { code: "22023", message: "INVALID_SEARCH_FILTERS" } });
+
+    const error = await repository.searchPacks({ query: "warm" }).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(SharingValidationError);
+    expect(error).not.toBe(rawData);
+    expect(error).not.toHaveProperty("internal");
   });
 
   it.each([

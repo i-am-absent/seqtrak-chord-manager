@@ -55,6 +55,7 @@ function sharingRepository(pack: PublicPack): PackRepository {
   return {
     ownsPack: vi.fn().mockReturnValue(false),
     listPacks: vi.fn().mockResolvedValue({ items: [pack], nextCursor: null }),
+    searchPacks: vi.fn(),
     createPack: vi.fn(),
     updatePack: vi.fn(),
     deletePack: vi.fn(),
